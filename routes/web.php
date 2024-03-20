@@ -19,10 +19,7 @@ Route::get('/', function () {
     return view('product.index');
 });
 
-   Route::get('/product', [ProductController::class, 'index'])->name('product.index');
-   Route::get('/product/{id}', [ProductController::class, 'show'])->name('product.show');
-   Route::get('/order', [OrderController::class, 'index']);
-Route::post('/checkout', [OrderController::class, 'checkout']);
+Route::get('/product', [ProductController::class, 'index'])->name('product.index');
+Route::get('/product/{id}', [ProductController::class, 'show'])->name('product.show');
 Route::get('/order', [OrderController::class, 'index']);
 Route::post('/checkout', [OrderController::class, 'checkout']);
-
