@@ -16,13 +16,13 @@
 <body>
     <div class="d-flex justify-content-center">
         <div class="card" style="width: 18rem;">
-            <img src="..." class="card-img-top" alt="...">
+            {{-- <img src="..." class="card-img-top" alt="..."> --}}
             <div class="card-body">
                 <h5 class="card-title">Detail Transaction</h5>
                 <table>
                     <tr>
                         <td>total</td>
-                        <td> : {{ $order->total }}</td>
+                        <td> : {{ $order->price }}</td>
                     </tr>
                 </table>
 
