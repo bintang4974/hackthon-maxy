@@ -1,66 +1,363 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Frontend Integration Guide - 2FA dengan Google Authenticator
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+## 📱 Implementasi Frontend untuk 2FA
 
-## About Laravel
+### **Setup di HTML**
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Pastikan load Google Authenticator library:
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://www.google.com/recaptcha/api.js"></script>
+</head>
+<body>
+  <!-- Your HTML here -->
+</body>
+</html>
+```
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## 🔄 Flow Frontend
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+```
+Login Form
+    ↓
+Enter Username, Password
+    ↓
+Get reCAPTCHA Token
+    ↓
+Submit Login Request
+    ↓
+Check if 2FA is Enabled
+    ↓
+If YES: Show OTP Input Screen
+    ↓
+Enter 6-digit OTP from Google Authenticator
+    ↓
+Verify OTP
+    ↓
+Success: Get JWT Token
+```
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+---
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains over 2000 video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## 📝 Step-by-Step Frontend Implementation
 
-## Laravel Sponsors
+### **1. Login Form Component**
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the Laravel [Patreon page](https://patreon.com/taylorotwell).
+```html
+<form id="loginForm">
+  <input type="text" id="username" placeholder="Username" required>
+  <input type="password" id="password" placeholder="Password" required>
+  
+  <div id="otpContainer" style="display:none;">
+    <input type="text" id="otp" placeholder="Enter 6-digit OTP" maxlength="6" pattern="[0-9]{6}">
+  </div>
 
-### Premium Partners
+  <button type="submit">Login</button>
+</form>
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Cubet Techno Labs](https://cubettech.com)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[Many](https://www.many.co.uk)**
-- **[Webdock, Fast VPS Hosting](https://www.webdock.io/en)**
-- **[DevSquad](https://devsquad.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[OP.GG](https://op.gg)**
-- **[WebReinvent](https://webreinvent.com/?utm_source=laravel&utm_medium=github&utm_campaign=patreon-sponsors)**
-- **[Lendio](https://lendio.com)**
+<div id="qrContainer" style="display:none;">
+  <p>Scan this QR code dengan Google Authenticator</p>
+  <img id="qrCode" src="">
+  <button id="confirmBtn">Confirm Setup 2FA</button>
+</div>
+```
 
-## Contributing
+---
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### **2. Step 1: Login dengan reCAPTCHA**
 
-## Code of Conduct
+```javascript
+async function handleLogin(event) {
+  event.preventDefault();
+  
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  
+  // Generate reCAPTCHA token
+  const recaptchaToken = await generateRecaptchaToken();
+  
+  try {
+    const response = await fetch('/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username,
+        password,
+        recaptchaToken,
+      }),
+    });
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+    if (response.status === 401) {
+      alert('Invalid username or password');
+      return;
+    }
 
-## Security Vulnerabilities
+    const data = await response.json();
+    
+    // Save temporary token untuk setup 2FA (jika diperlukan)
+    localStorage.setItem('temp_token', data.access_token);
+    
+    // Check if 2FA is enabled
+    const twoFAStatus = await check2FAStatus(data.access_token);
+    
+    if (!twoFAStatus.isEnabled) {
+      // Offer to setup 2FA
+      showSetup2FAOption();
+    } else {
+      // User sudah punya 2FA, minta OTP
+      document.getElementById('otpContainer').style.display = 'block';
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    alert('Login failed');
+  }
+}
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+document.getElementById('loginForm').addEventListener('submit', handleLogin);
+```
 
-## License
+---
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### **3. Generate reCAPTCHA Token**
+
+```javascript
+async function generateRecaptchaToken() {
+  return new Promise((resolve) => {
+    grecaptcha.ready(function() {
+      grecaptcha.execute('YOUR_SITE_KEY_HERE', { action: 'login' }).then(function(token) {
+        resolve(token);
+      });
+    });
+  });
+}
+```
+
+---
+
+### **4. Check 2FA Status**
+
+```javascript
+async function check2FAStatus(token) {
+  const response = await fetch('/auth/2fa/status', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (response.ok) {
+    return await response.json();
+  }
+  
+  return { isEnabled: false };
+}
+```
+
+---
+
+### **5. Setup 2FA Flow**
+
+```javascript
+async function setup2FA() {
+  const token = localStorage.getItem('temp_token');
+  
+  try {
+    const response = await fetch('/auth/2fa/setup', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    const data = await response.json();
+    
+    // Show QR code
+    document.getElementById('qrCode').src = data.qrCode;
+    document.getElementById('qrContainer').style.display = 'block';
+    
+    // Save secret & backup codes untuk display
+    localStorage.setItem('2fa_secret', data.secret);
+    localStorage.setItem('2fa_backup_codes', JSON.stringify(data.backupCodes));
+    
+    // Show backup codes
+    console.log('Backup Codes:', data.backupCodes);
+    
+  } catch (error) {
+    console.error('Setup 2FA error:', error);
+    alert('Failed to setup 2FA');
+  }
+}
+```
+
+---
+
+### **6. Verify 2FA Setup**
+
+```javascript
+async function verify2FASetup() {
+  const token = localStorage.getItem('temp_token');
+  const otp = document.getElementById('otp').value;
+  const userId = 'user-id-anda'; // Get from user object
+  
+  try {
+    const response = await fetch('/auth/2fa/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        userId,
+        otp,
+      }),
+    });
+
+    const data = await response.json();
+    
+    if (response.ok) {
+      alert('2FA enabled successfully!');
+      alert('Backup codes:\n' + data.backupCodes.join('\n'));
+      // Redirect to dashboard
+      window.location.href = '/dashboard';
+    } else {
+      alert('Invalid OTP');
+    }
+  } catch (error) {
+    console.error('Verify 2FA error:', error);
+  }
+}
+```
+
+---
+
+### **7. Login dengan OTP (Setelah 2FA Enabled)**
+
+```javascript
+async function loginWith2FA(event) {
+  event.preventDefault();
+  
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  const otp = document.getElementById('otp').value;
+  const recaptchaToken = await generateRecaptchaToken();
+  
+  try {
+    const response = await fetch('/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username,
+        password,
+        recaptchaToken,
+        twoFactorCode: otp, // OTP dari Google Authenticator
+      }),
+    });
+
+    const data = await response.json();
+    
+    if (response.ok) {
+      // Save JWT token
+      localStorage.setItem('auth_token', data.access_token);
+      // Redirect to dashboard
+      window.location.href = '/dashboard';
+    } else {
+      alert('Invalid OTP or credentials');
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+  }
+}
+```
+
+---
+
+## 🎨 UI Components Recommendations
+
+### **Login Form:**
+```
+┌─────────────────────────┐
+│  Login                  │
+├─────────────────────────┤
+│ Username: [_________]   │
+│ Password: [_________]   │
+│ [    Login Button    ]  │
+└─────────────────────────┘
+```
+
+### **2FA Setup Form:**
+```
+┌─────────────────────────┐
+│  Setup 2FA              │
+├─────────────────────────┤
+│ Scan QR Code:           │
+│  [  QR Code Image  ]    │
+│                         │
+│ Or enter secret:        │
+│ JBSWY3DPEBLW64TMMQ     │
+│                         │
+│ [  Setup Button  ]      │
+└─────────────────────────┘
+```
+
+### **Verify OTP Form:**
+```
+┌─────────────────────────┐
+│  Enter OTP              │
+├─────────────────────────┤
+│ From your app:          │
+│ [__ __ __ __ __ __]     │
+│                         │
+│ [ Verify ]  [ Cancel ]  │
+└─────────────────────────┘
+```
+
+---
+
+## 🔐 Security Best Practices
+
+1. **Always use HTTPS** untuk komunikasi
+2. **Never store secret** di local storage - generate baru setiap setup
+3. **Clear tokens** dari localStorage setelah logout
+4. **Validate OTP** client-side sebelum submit (6 digits)
+5. **Show backup codes** hanya sekali saat setup
+
+---
+
+## 🧪 Testing Checklist
+
+- [ ] Login flow berjalan normal
+- [ ] reCAPTCHA token berhasil digenerate
+- [ ] 2FA setup menampilkan QR code
+- [ ] Bisa scan QR code dengan Google Authenticator
+- [ ] OTP verification bekerja
+- [ ] Backup codes bisa di-copy dan disimpan
+- [ ] Login dengan OTP berjalan lancar
+- [ ] Disable 2FA berjalan
+- [ ] Token JWT disimpan dengan aman
+
+---
+
+## 📚 Useful Libraries
+
+- **qrcode.react** - React component untuk display QR code
+- **react-otp-input** - Component untuk OTP input
+- **speakeasy** (jika perlu generate token di client)
+
+---
+
+## 🚀 Next Steps
+
+1. Implement form validation
+2. Add loading states
+3. Add error handling
+4. Implement remember device feature
+5. Add backup codes display
