@@ -1,363 +1,229 @@
-# Frontend Integration Guide - 2FA dengan Google Authenticator
+# 2FA dengan Google Authenticator - Documentation
 
-## 📱 Implementasi Frontend untuk 2FA
+## 📋 Integrasi 2FA (Two-Factor Authentication) dengan Google Authenticator
 
-### **Setup di HTML**
+Sistem 2FA sudah terintegrasi dengan backend NestJS Anda. Berikut adalah panduan lengkap untuk setup dan testing.
 
-Pastikan load Google Authenticator library:
+---
 
-```html
-<!DOCTYPE html>
-<html>
-<head>
-  <script src="https://www.google.com/recaptcha/api.js"></script>
-</head>
-<body>
-  <!-- Your HTML here -->
-</body>
-</html>
+## 🚀 Instalasi Dependencies
+
+Jalankan perintah ini untuk install library yang diperlukan:
+
+```bash
+npm install speakeasy qrcode
+npm install --save-dev @types/speakeasy
 ```
 
 ---
 
-## 🔄 Flow Frontend
+## 📊 Flow 2FA
 
 ```
-Login Form
-    ↓
-Enter Username, Password
-    ↓
-Get reCAPTCHA Token
-    ↓
-Submit Login Request
-    ↓
-Check if 2FA is Enabled
-    ↓
-If YES: Show OTP Input Screen
-    ↓
-Enter 6-digit OTP from Google Authenticator
-    ↓
-Verify OTP
-    ↓
-Success: Get JWT Token
+1. User login dengan username, password, dan reCAPTCHA
+2. System check apakah 2FA enabled
+3. Jika enabled:
+   - User harus provide OTP dari Google Authenticator
+   - Verify OTP
+   - Return JWT token
+4. Jika belum enabled:
+   - Return temporary token (untuk setup 2FA)
 ```
 
 ---
 
-## 📝 Step-by-Step Frontend Implementation
+## 🔧 Testing di Postman
 
-### **1. Login Form Component**
+### **Step 1: Login (Get Temporary Token)**
 
-```html
-<form id="loginForm">
-  <input type="text" id="username" placeholder="Username" required>
-  <input type="password" id="password" placeholder="Password" required>
-  
-  <div id="otpContainer" style="display:none;">
-    <input type="text" id="otp" placeholder="Enter 6-digit OTP" maxlength="6" pattern="[0-9]{6}">
-  </div>
+```http
+POST http://localhost:7001/auth/login
+Content-Type: application/json
 
-  <button type="submit">Login</button>
-</form>
-
-<div id="qrContainer" style="display:none;">
-  <p>Scan this QR code dengan Google Authenticator</p>
-  <img id="qrCode" src="">
-  <button id="confirmBtn">Confirm Setup 2FA</button>
-</div>
-```
-
----
-
-### **2. Step 1: Login dengan reCAPTCHA**
-
-```javascript
-async function handleLogin(event) {
-  event.preventDefault();
-  
-  const username = document.getElementById('username').value;
-  const password = document.getElementById('password').value;
-  
-  // Generate reCAPTCHA token
-  const recaptchaToken = await generateRecaptchaToken();
-  
-  try {
-    const response = await fetch('/auth/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        username,
-        password,
-        recaptchaToken,
-      }),
-    });
-
-    if (response.status === 401) {
-      alert('Invalid username or password');
-      return;
-    }
-
-    const data = await response.json();
-    
-    // Save temporary token untuk setup 2FA (jika diperlukan)
-    localStorage.setItem('temp_token', data.access_token);
-    
-    // Check if 2FA is enabled
-    const twoFAStatus = await check2FAStatus(data.access_token);
-    
-    if (!twoFAStatus.isEnabled) {
-      // Offer to setup 2FA
-      showSetup2FAOption();
-    } else {
-      // User sudah punya 2FA, minta OTP
-      document.getElementById('otpContainer').style.display = 'block';
-    }
-  } catch (error) {
-    console.error('Login error:', error);
-    alert('Login failed');
-  }
+{
+  "username": "omnix",
+  "password": "admin123",
+  "recaptchaToken": "test-token-dev"
 }
-
-document.getElementById('loginForm').addEventListener('submit', handleLogin);
 ```
 
----
-
-### **3. Generate reCAPTCHA Token**
-
-```javascript
-async function generateRecaptchaToken() {
-  return new Promise((resolve) => {
-    grecaptcha.ready(function() {
-      grecaptcha.execute('YOUR_SITE_KEY_HERE', { action: 'login' }).then(function(token) {
-        resolve(token);
-      });
-    });
-  });
+Response:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 }
 ```
 
 ---
 
-### **4. Check 2FA Status**
+### **Step 2: Setup 2FA (Generate QR Code)**
 
-```javascript
-async function check2FAStatus(token) {
-  const response = await fetch('/auth/2fa/status', {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
+Gunakan JWT token dari Step 1 di Authorization header.
 
-  if (response.ok) {
-    return await response.json();
-  }
-  
-  return { isEnabled: false };
+```http
+POST http://localhost:7001/auth/2fa/setup
+Authorization: Bearer <JWT_TOKEN_DARI_STEP_1>
+Content-Type: application/json
+```
+
+**Body:** (kosong atau `{}`)
+
+Response:
+```json
+{
+  "message": "Scan this QR code with Google Authenticator or Authy app",
+  "qrCode": "data:image/png;base64,iVBORw0KGgoAAAANSUhE...",
+  "secret": "JBSWY3DPEBLW64TMMQ",
+  "backupCodes": [
+    "A1B2C3D4",
+    "E5F6G7H8",
+    "I9J0K1L2",
+    ...
+  ],
+  "instructions": "Verify OTP to enable 2FA. Save backup codes in a secure place."
 }
 ```
 
 ---
 
-### **5. Setup 2FA Flow**
+### **Step 3: Scan QR Code di Google Authenticator**
 
-```javascript
-async function setup2FA() {
-  const token = localStorage.getItem('temp_token');
-  
-  try {
-    const response = await fetch('/auth/2fa/setup', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
+1. **Download Google Authenticator** (iOS/Android)
+2. **Buka app Google Authenticator**
+3. **Tap "+" untuk tambah account**
+4. **Pilih "Scan a QR code"**
+5. **Scan QR code dari response Step 2**
+6. **App akan show 6-digit code yang berubah setiap 30 detik**
 
-    const data = await response.json();
-    
-    // Show QR code
-    document.getElementById('qrCode').src = data.qrCode;
-    document.getElementById('qrContainer').style.display = 'block';
-    
-    // Save secret & backup codes untuk display
-    localStorage.setItem('2fa_secret', data.secret);
-    localStorage.setItem('2fa_backup_codes', JSON.stringify(data.backupCodes));
-    
-    // Show backup codes
-    console.log('Backup Codes:', data.backupCodes);
-    
-  } catch (error) {
-    console.error('Setup 2FA error:', error);
-    alert('Failed to setup 2FA');
-  }
+---
+
+### **Step 4: Verify 2FA (Enable 2FA)**
+
+Ambil 6-digit code dari Google Authenticator dan verify:
+
+```http
+POST http://localhost:7001/auth/2fa/verify
+Authorization: Bearer <JWT_TOKEN_DARI_STEP_1>
+Content-Type: application/json
+
+{
+  "userId": "user-id-anda",
+  "otp": "123456"
+}
+```
+
+Response (Success):
+```json
+{
+  "message": "2FA enabled successfully",
+  "isEnabled": true,
+  "backupCodes": [
+    "A1B2C3D4",
+    "E5F6G7H8",
+    ...
+  ]
 }
 ```
 
 ---
 
-### **6. Verify 2FA Setup**
+### **Step 5: Check 2FA Status**
 
-```javascript
-async function verify2FASetup() {
-  const token = localStorage.getItem('temp_token');
-  const otp = document.getElementById('otp').value;
-  const userId = 'user-id-anda'; // Get from user object
-  
-  try {
-    const response = await fetch('/auth/2fa/verify', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        userId,
-        otp,
-      }),
-    });
+```http
+GET http://localhost:7001/auth/2fa/status
+Authorization: Bearer <JWT_TOKEN_DARI_STEP_1>
+```
 
-    const data = await response.json();
-    
-    if (response.ok) {
-      alert('2FA enabled successfully!');
-      alert('Backup codes:\n' + data.backupCodes.join('\n'));
-      // Redirect to dashboard
-      window.location.href = '/dashboard';
-    } else {
-      alert('Invalid OTP');
-    }
-  } catch (error) {
-    console.error('Verify 2FA error:', error);
-  }
+Response:
+```json
+{
+  "isEnabled": true,
+  "enabledAt": "2026-05-11T10:30:00.000Z",
+  "deviceName": null
 }
 ```
 
 ---
 
-### **7. Login dengan OTP (Setelah 2FA Enabled)**
+### **Step 6: Get New Backup Codes**
 
-```javascript
-async function loginWith2FA(event) {
-  event.preventDefault();
-  
-  const username = document.getElementById('username').value;
-  const password = document.getElementById('password').value;
-  const otp = document.getElementById('otp').value;
-  const recaptchaToken = await generateRecaptchaToken();
-  
-  try {
-    const response = await fetch('/auth/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        username,
-        password,
-        recaptchaToken,
-        twoFactorCode: otp, // OTP dari Google Authenticator
-      }),
-    });
+Jika ingin regenerate backup codes:
 
-    const data = await response.json();
-    
-    if (response.ok) {
-      // Save JWT token
-      localStorage.setItem('auth_token', data.access_token);
-      // Redirect to dashboard
-      window.location.href = '/dashboard';
-    } else {
-      alert('Invalid OTP or credentials');
-    }
-  } catch (error) {
-    console.error('Login error:', error);
-  }
+```http
+POST http://localhost:7001/auth/2fa/backup-codes
+Authorization: Bearer <JWT_TOKEN_DARI_STEP_1>
+Content-Type: application/json
+
+{
+  "otp": "123456"
+}
+```
+
+Response:
+```json
+{
+  "message": "New backup codes generated",
+  "backupCodes": [
+    "A1B2C3D4",
+    "E5F6G7H8",
+    ...
+  ]
 }
 ```
 
 ---
 
-## 🎨 UI Components Recommendations
+### **Step 7: Disable 2FA**
 
-### **Login Form:**
-```
-┌─────────────────────────┐
-│  Login                  │
-├─────────────────────────┤
-│ Username: [_________]   │
-│ Password: [_________]   │
-│ [    Login Button    ]  │
-└─────────────────────────┘
-```
+```http
+POST http://localhost:7001/auth/2fa/disable
+Authorization: Bearer <JWT_TOKEN_DARI_STEP_1>
+Content-Type: application/json
 
-### **2FA Setup Form:**
-```
-┌─────────────────────────┐
-│  Setup 2FA              │
-├─────────────────────────┤
-│ Scan QR Code:           │
-│  [  QR Code Image  ]    │
-│                         │
-│ Or enter secret:        │
-│ JBSWY3DPEBLW64TMMQ     │
-│                         │
-│ [  Setup Button  ]      │
-└─────────────────────────┘
+{
+  "otp": "123456"
+}
 ```
 
-### **Verify OTP Form:**
-```
-┌─────────────────────────┐
-│  Enter OTP              │
-├─────────────────────────┤
-│ From your app:          │
-│ [__ __ __ __ __ __]     │
-│                         │
-│ [ Verify ]  [ Cancel ]  │
-└─────────────────────────┘
+Response:
+```json
+{
+  "message": "2FA disabled successfully",
+  "isEnabled": false
+}
 ```
 
 ---
 
-## 🔐 Security Best Practices
+## 📱 Menggunakan Backup Codes
 
-1. **Always use HTTPS** untuk komunikasi
-2. **Never store secret** di local storage - generate baru setiap setup
-3. **Clear tokens** dari localStorage setelah logout
-4. **Validate OTP** client-side sebelum submit (6 digits)
-5. **Show backup codes** hanya sekali saat setup
+Jika user tidak punya akses ke Google Authenticator (loss phone, etc):
 
----
-
-## 🧪 Testing Checklist
-
-- [ ] Login flow berjalan normal
-- [ ] reCAPTCHA token berhasil digenerate
-- [ ] 2FA setup menampilkan QR code
-- [ ] Bisa scan QR code dengan Google Authenticator
-- [ ] OTP verification bekerja
-- [ ] Backup codes bisa di-copy dan disimpan
-- [ ] Login dengan OTP berjalan lancar
-- [ ] Disable 2FA berjalan
-- [ ] Token JWT disimpan dengan aman
+1. Pada login screen, user bisa gunakan **backup code** sebagai pengganti OTP
+2. Backup code format: `A1B2C3D4` (8 karakter)
+3. Setelah digunakan, backup code itu invalid
 
 ---
 
-## 📚 Useful Libraries
+## 🔐 Security Features
 
-- **qrcode.react** - React component untuk display QR code
-- **react-otp-input** - Component untuk OTP input
-- **speakeasy** (jika perlu generate token di client)
+- ✓ OTP valid hanya 30 detik (Time-based OTP)
+- ✓ Backup codes untuk emergency access
+- ✓ Require OTP verification untuk disable 2FA
+- ✓ Time window ±2 untuk account clock skew
 
 ---
 
-## 🚀 Next Steps
+## 📚 Library yang Digunakan
 
-1. Implement form validation
-2. Add loading states
-3. Add error handling
-4. Implement remember device feature
-5. Add backup codes display
+- **speakeasy** - Generate & verify TOTP tokens
+- **qrcode** - Generate QR code untuk scanning
+
+---
+
+## 🛠️ Next Steps
+
+1. **Update login endpoint** untuk require OTP jika 2FA enabled
+2. **Update frontend** untuk show 2FA setup flow
+3. **Add migration** untuk create `user_two_factor` table
+4. **Test dengan real 2FA flow**
