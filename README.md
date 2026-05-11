@@ -1,29 +1,130 @@
-# Testing Guide - Account & Profile Module
+# reCAPTCHA Integration Summary
 
-Panduan lengkap untuk testing API module Account dan Profile di Postman.
-
----
-
-## 📋 Prerequisites
-
-- Postman installed
-- Application running on `http://localhost:7001`
-- Default user credentials:
-  - **Username:** omnix
-  - **Password:** admin123
+Status implementasi reCAPTCHA v3 untuk aplikasi ONX Tenancy.
 
 ---
 
-## 🔐 Step 1: Login & Get JWT Token
+## ✅ Backend Status
 
-### Endpoint
+### Completed
+- [x] **RecaptchaService** - Service untuk verify token
+- [x] **Mock Token Support** - Testing dengan `test-token-dev` di development
+- [x] **Production Ready** - Full Google reCAPTCHA integration
+- [x] **Error Handling** - Proper error messages dan logging
+- [x] **Auth Flow** - Login endpoint sudah integrate reCAPTCHA
+- [x] **Environment Config** - Setup lengkap di .env
+
+### Backend Implementation Details
+
+#### 1. RecaptchaService (`src/auth/recaptcha.service.ts`)
 ```
-POST http://localhost:7001/auth/login
-Content-Type: application/json
+✓ Development Mode Support
+  - Mock token: 'test-token-dev' → auto-pass
+  - Useful untuk testing tanpa real reCAPTCHA
+
+✓ Production Mode
+  - Verify dengan Google API: https://www.google.com/recaptcha/api/siteverify
+  - Check success flag
+  - Validate score >= threshold (default 0.5)
+  - Validate action = 'login'
+
+✓ Error Handling
+  - Token required validation
+  - Secret key validation
+  - Score threshold validation
+  - Network error handling
 ```
 
-### Request Body
-```json
+#### 2. Auth Flow (`src/auth/auth.controller.ts`)
+```
+POST /auth/login
+├─ Body: username, password, recaptchaToken
+├─ Call AuthService.validateUserWithRecaptcha()
+│  ├─ Call RecaptchaService.verifyToken()
+│  │  └─ Return boolean (true/false)
+│  ├─ If reCAPTCHA ✓ → validate credentials
+│  └─ If credentials ✓ → return JWT token
+└─ Return: { access_token: "..." }
+```
+
+#### 3. Environment Variables
+```
+RECAPTCHA_SECRET_KEY        = Secret key dari Google
+RECAPTCHA_SCORE_THRESHOLD   = 0.5 (0-1, higher = stricter)
+RECAPTCHA_DEV_TOKEN         = test-token-dev
+ENVIRONMENT                 = development or production
+```
+
+---
+
+## 📋 Frontend Status
+
+### Current Status
+- ✅ Frontend sudah mulai integration (lihat screenshot)
+- ✅ Mock token testing ready
+- ⏳ Real reCAPTCHA keys needed
+- ⏳ Frontend QR code implementation
+- ⏳ UI/UX refinement
+
+### What Frontend Needs
+
+#### 1. Get reCAPTCHA Keys
+Go to: https://www.google.com/recaptcha/admin
+
+```
+Site Registration:
+├─ Site Label: ONX Tenancy App
+├─ reCAPTCHA Type: v3
+├─ Domains: yourdomain.com, api.yourdomain.com
+└─ Get Keys:
+   ├─ SITE_KEY (public, for frontend)
+   └─ SECRET_KEY (secret, for backend)
+```
+
+#### 2. Update Backend .env
+```env
+RECAPTCHA_SECRET_KEY=<YOUR_SECRET_KEY_FROM_GOOGLE>
+RECAPTCHA_SCORE_THRESHOLD=0.5
+RECAPTCHA_DEV_TOKEN=test-token-dev
+ENVIRONMENT=production  # Change to production
+```
+
+#### 3. Frontend Implementation
+```javascript
+// 1. Load reCAPTCHA script
+<script src="https://www.google.com/recaptcha/api.js"></script>
+
+// 2. On login submit
+const token = await window.grecaptcha.execute(
+  'YOUR_SITE_KEY',
+  { action: 'login' }
+);
+
+// 3. Send with credentials
+axios.post('/auth/login', {
+  username: username,
+  password: password,
+  recaptchaToken: token  // ← reCAPTCHA token
+});
+```
+
+See: **RECAPTCHA_FRONTEND_INTEGRATION.md** for complete examples
+
+---
+
+## 🧪 Testing Strategy
+
+### Phase 1: Development (Now)
+```
+✓ Backend running dengan ENVIRONMENT=development
+✓ Mock token: test-token-dev
+✓ No need untuk real Google reCAPTCHA keys
+✓ Perfect untuk frontend development
+```
+
+**Testing dengan Postman:**
+```
+POST /auth/login
 {
   "username": "omnix",
   "password": "admin123",
@@ -31,456 +132,247 @@ Content-Type: application/json
 }
 ```
 
-### Response
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Im9tbml4IiwiaWQiOjEsImlhdCI6MTY4NDA2NzUwMCwiZXhwIjoxNjg0MTUzOTAwfQ.xyz..."
-}
-```
-
-**💡 Simpan token ini untuk semua request berikutnya!**
-
----
-
-## 👤 ACCOUNT Module Testing
-
-### 1. Get My Account Info
-```
-GET http://localhost:7001/account/me
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
-```
-
 **Response:**
-```json
+```
 {
-  "id": 1,
-  "username": "omnix",
-  "name": "Omnix Admin",
-  "role": "ADMIN",
-  "twoFactorEnabled": false,
-  "createdAt": "2025-11-15T10:30:00.000Z"
+  "access_token": "eyJhbGciOi..."
 }
+```
+
+### Phase 2: Staging (When ready)
+```
+⏳ Get real reCAPTCHA keys from Google
+⏳ Update RECAPTCHA_SECRET_KEY in .env
+⏳ Change ENVIRONMENT=staging
+⏳ Test dengan real Google tokens
+```
+
+### Phase 3: Production
+```
+⏳ Verify all domains registered di Google Console
+⏳ Set ENVIRONMENT=production
+⏳ Set RECAPTCHA_SCORE_THRESHOLD appropriately (0.5-0.7)
+⏳ Monitor reCAPTCHA analytics
+⏳ Setup alerts untuk suspicious activity
 ```
 
 ---
 
-### 2. Get Account Security Info
-```
-GET http://localhost:7001/account/security
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
-```
+## 📊 Testing Flow Chart
 
-**Response:**
-```json
-{
-  "id": 1,
-  "username": "omnix",
-  "name": "Omnix Admin",
-  "role": "ADMIN",
-  "lastPasswordChange": "2025-11-15T10:30:00.000Z",
-  "twoFactorEnabled": false,
-  "twoFactorEnabledAt": null
-}
 ```
-
----
-
-### 3. Change Password
-```
-POST http://localhost:7001/account/change-password
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
-```
-
-**Request Body:**
-```json
-{
-  "oldPassword": "admin123",
-  "newPassword": "newPassword123",
-  "confirmPassword": "newPassword123"
-}
-```
-
-**Response (Success):**
-```json
-{
-  "message": "Password changed successfully"
-}
-```
-
-**Response (Error - Old password incorrect):**
-```json
-{
-  "statusCode": 401,
-  "message": "Old password is incorrect"
-}
-```
-
-**Response (Error - Password too short):**
-```json
-{
-  "statusCode": 400,
-  "message": "New password must be at least 8 characters long"
-}
+┌──────────────────────────────────┐
+│   DEVELOPMENT (Current Phase)    │
+├──────────────────────────────────┤
+│                                  │
+│  Frontend                        │
+│  ├─ Testing dengan mock token    │
+│  │  (test-token-dev)             │
+│  └─ No real reCAPTCHA needed     │
+│                                  │
+│  Backend                         │
+│  ├─ ENVIRONMENT=development      │
+│  ├─ Accept mock token            │
+│  └─ Return JWT token             │
+│                                  │
+│  Result: ✓ Login successful      │
+│                                  │
+└──────────────────────────────────┘
+           ↓ When ready
+┌──────────────────────────────────┐
+│  PRODUCTION (Later Phase)        │
+├──────────────────────────────────┤
+│                                  │
+│  Frontend                        │
+│  ├─ Load real reCAPTCHA script   │
+│  ├─ Get real SITE_KEY            │
+│  └─ Generate token via Google    │
+│                                  │
+│  Backend                         │
+│  ├─ ENVIRONMENT=production       │
+│  ├─ Verify token dengan Google   │
+│  ├─ Check score >= threshold     │
+│  └─ Return JWT token if valid    │
+│                                  │
+│  Result: ✓ Secure login          │
+│                                  │
+└──────────────────────────────────┘
 ```
 
 ---
 
-### 4. Get All Accounts (Admin)
+## 🎯 Integration Checklist
+
+### Backend (Ready ✓)
+- [x] RecaptchaService created
+- [x] Auth flow updated
+- [x] Mock token support
+- [x] Error handling
+- [x] Logging
+- [x] Environment config
+
+### Frontend (In Progress ⏳)
+- [ ] Load reCAPTCHA script
+- [ ] Get real Site Key from Google
+- [ ] Implement grecaptcha.execute()
+- [ ] Send token dengan login request
+- [ ] Handle JWT response
+- [ ] Save JWT ke localStorage
+- [ ] Use JWT untuk subsequent requests
+
+### Testing (Ready ✓ for Development)
+- [x] Postman collection created
+- [x] Testing guide available
+- [x] Mock token working
+- [ ] Real token testing (pending real keys)
+
+### Monitoring (Setup Later)
+- [ ] reCAPTCHA dashboard monitoring
+- [ ] Score analytics
+- [ ] Bot detection tracking
+- [ ] Error rate monitoring
+
+---
+
+## 📝 Implementation Timeline
+
+### Week 1: Development Setup ✓ (Now)
 ```
-GET http://localhost:7001/account/list/all?skip=0&take=50
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
+✓ Backend ready
+✓ Mock token testing
+✓ Documentation created
+→ Frontend can start development
 ```
 
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "username": "omnix",
-      "name": "Omnix Admin",
-      "role": "ADMIN",
-      "twoFactorEnabled": false,
-      "createdAt": "2025-11-15T10:30:00.000Z"
-    },
-    {
-      "id": 2,
-      "username": "user1",
-      "name": "User One",
-      "role": "REQUESTER",
-      "twoFactorEnabled": true,
-      "createdAt": "2025-11-15T11:00:00.000Z"
-    }
-  ],
-  "total": 2
-}
+### Week 2: Frontend Integration
+```
+→ Frontend implement grecaptcha.execute()
+→ Test dengan mock token
+→ Verify JWT token handling
+```
+
+### Week 3: Real reCAPTCHA Setup
+```
+→ Register site di Google Console
+→ Get real SITE_KEY & SECRET_KEY
+→ Update .env dengan real keys
+→ Test dengan real tokens
+```
+
+### Week 4: QA & Monitoring
+```
+→ Full end-to-end testing
+→ Monitor reCAPTCHA analytics
+→ Fine-tune score threshold
+→ Ready for production
 ```
 
 ---
 
-### 5. Search Accounts
-```
-GET http://localhost:7001/account/search/find?term=omnix&skip=0&take=50
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
+## 📚 Documentation Files
+
+1. **RECAPTCHA_FRONTEND_INTEGRATION.md**
+   - Complete frontend implementation guide
+   - React & Vue examples
+   - Testing instructions
+
+2. **POSTMAN_RECAPTCHA_TESTING.json**
+   - Postman collection
+   - Ready-to-use requests
+   - Testing scenarios
+
+3. **ACCOUNT_PROFILE_TESTING_GUIDE.md**
+   - Account & Profile API testing
+   - Complete endpoints reference
+
+---
+
+## 🔗 Related Documentation
+
+- [Google reCAPTCHA v3 Docs](https://developers.google.com/recaptcha/docs/v3)
+- [NestJS Authentication](https://docs.nestjs.com/security/authentication)
+- [Postman Guide](https://learning.postman.com/docs/)
+
+---
+
+## 💡 Tips for Frontend Developer
+
+### Development (Test Mode)
+```javascript
+// ✓ During development, use mock token
+const token = 'test-token-dev';
+
+axios.post('/auth/login', {
+  username: 'omnix',
+  password: 'admin123',
+  recaptchaToken: token  // ← Mock token works!
+});
 ```
 
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "username": "omnix",
-      "name": "Omnix Admin",
-      "role": "ADMIN",
-      "twoFactorEnabled": false,
-      "createdAt": "2025-11-15T10:30:00.000Z"
-    }
-  ],
-  "total": 1
-}
+### Production (Real Token)
+```javascript
+// ✓ When live, use real Google token
+const token = await window.grecaptcha.execute(
+  'YOUR_SITE_KEY_FROM_GOOGLE',
+  { action: 'login' }
+);
+
+axios.post('/auth/login', {
+  username: 'omnix',
+  password: 'admin123',
+  recaptchaToken: token  // ← Real token from Google
+});
 ```
 
 ---
 
-## 📝 PROFILE Module Testing
+## 🚨 Common Issues & Solutions
 
-### 1. Create User Profile
-```
-POST http://localhost:7001/profile
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
-```
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| "socket hang up" | Server not running | `docker-compose up -d` |
+| "reCAPTCHA token required" | Token not sent | Check frontend code sends token |
+| "verification failed" | Invalid token | Make sure token is 'test-token-dev' or real |
+| "score too low" | Bot detected | Lower RECAPTCHA_SCORE_THRESHOLD |
+| "Script not loading" | Wrong URL | Check reCAPTCHA script src is correct |
 
-**Request Body (All Optional):**
-```json
-{
-  "name": "John Doe",
-  "nik": "1234567890123456",
-  "direktorat": "IT & Digital",
-  "divisi": "Backend Engineering",
-  "departemen": "API Development",
-  "emailCorporate": "john.doe@company.com",
-  "emailNonCorporate": "john.doe@gmail.com",
-  "nomorHp": "081234567890"
-}
-```
+---
 
-**Response:**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "userId": "1",
-  "name": "John Doe",
-  "nik": "1234567890123456",
-  "direktorat": "IT & Digital",
-  "divisi": "Backend Engineering",
-  "departemen": "API Development",
-  "emailCorporate": "john.doe@company.com",
-  "emailNonCorporate": "john.doe@gmail.com",
-  "nomorHp": "081234567890",
-  "createdAt": "2025-11-15T15:30:00.000Z",
-  "updatedAt": "2025-11-15T15:30:00.000Z"
-}
+## ✨ Current Status Summary
+
+```
+✅ Backend:      READY FOR TESTING
+✅ Mock Token:   READY (test-token-dev)
+✅ JWT Auth:     READY
+⏳ Real Keys:    PENDING (Get from Google Console)
+⏳ Frontend:     IN PROGRESS
+⏳ 2FA:          READY (Bonus feature implemented)
+⏳ Monitoring:   SETUP LATER
 ```
 
 ---
 
-### 2. Get My Profile
-```
-GET http://localhost:7001/profile/me
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
-```
+## 🎯 Next Action Items
 
-**Response:**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "userId": "1",
-  "name": "John Doe",
-  "nik": "1234567890123456",
-  "direktorat": "IT & Digital",
-  "divisi": "Backend Engineering",
-  "departemen": "API Development",
-  "emailCorporate": "john.doe@company.com",
-  "emailNonCorporate": "john.doe@gmail.com",
-  "nomorHp": "081234567890",
-  "createdAt": "2025-11-15T15:30:00.000Z",
-  "updatedAt": "2025-11-15T15:30:00.000Z"
-}
-```
+### For Backend Team
+1. ✅ Already done - Backend is ready!
 
----
+### For Frontend Team
+1. Load reCAPTCHA script in HTML
+2. Implement grecaptcha.execute() function
+3. Send token dengan login request
+4. Handle JWT token response
+5. Save JWT untuk authenticated requests
 
-### 3. Get Other User Profile
-```
-GET http://localhost:7001/profile/2
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
-```
-
-(Replace `2` with actual userId)
-
----
-
-### 4. Update My Profile
-```
-PUT http://localhost:7001/profile
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
-```
-
-**Request Body (Update specific fields):**
-```json
-{
-  "name": "John Updated",
-  "direktorat": "IT & Digital Updated",
-  "nomorHp": "081234567899"
-}
-```
-
-**Response:**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "userId": "1",
-  "name": "John Updated",
-  "nik": "1234567890123456",
-  "direktorat": "IT & Digital Updated",
-  "divisi": "Backend Engineering",
-  "departemen": "API Development",
-  "emailCorporate": "john.doe@company.com",
-  "emailNonCorporate": "john.doe@gmail.com",
-  "nomorHp": "081234567899",
-  "createdAt": "2025-11-15T15:30:00.000Z",
-  "updatedAt": "2025-11-15T15:35:00.000Z"
-}
-```
-
----
-
-### 5. Update Other User Profile
-```
-PUT http://localhost:7001/profile/2
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
-```
-
-(Replace `2` with actual userId)
-
----
-
-### 6. Delete My Profile
-```
-DELETE http://localhost:7001/profile
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
-```
-
-**Response:**
-```json
-{
-  "message": "Profile deleted successfully"
-}
-```
-
----
-
-### 7. Delete Other User Profile
-```
-DELETE http://localhost:7001/profile/2
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
-```
-
-(Replace `2` with actual userId)
-
----
-
-### 8. Get All Profiles
-```
-GET http://localhost:7001/profile/list/all?skip=0&take=50
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
-```
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440000",
-      "userId": "1",
-      "name": "John Doe",
-      "nik": "1234567890123456",
-      "direktorat": "IT & Digital",
-      "divisi": "Backend Engineering",
-      "departemen": "API Development",
-      "emailCorporate": "john.doe@company.com",
-      "emailNonCorporate": "john.doe@gmail.com",
-      "nomorHp": "081234567890",
-      "createdAt": "2025-11-15T15:30:00.000Z",
-      "updatedAt": "2025-11-15T15:30:00.000Z"
-    }
-  ],
-  "total": 1
-}
-```
-
----
-
-### 9. Search Profiles
-```
-GET http://localhost:7001/profile/search/find?term=john&skip=0&take=50
-Authorization: Bearer <YOUR_JWT_TOKEN>
-Content-Type: application/json
-```
-
-**Cari berdasarkan:**
-- Name
-- NIK
-- Email Corporate
-- User ID
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440000",
-      "userId": "1",
-      "name": "John Doe",
-      "nik": "1234567890123456",
-      "direktorat": "IT & Digital",
-      "divisi": "Backend Engineering",
-      "departemen": "API Development",
-      "emailCorporate": "john.doe@company.com",
-      "emailNonCorporate": "john.doe@gmail.com",
-      "nomorHp": "081234567890",
-      "createdAt": "2025-11-15T15:30:00.000Z",
-      "updatedAt": "2025-11-15T15:30:00.000Z"
-    }
-  ],
-  "total": 1
-}
-```
-
----
-
-## ✅ Testing Checklist
-
-### Account Module
-- [ ] Login mendapat JWT token
-- [ ] Get account info berhasil
-- [ ] Get security info berhasil
-- [ ] Change password berhasil (dengan password lama yang benar)
-- [ ] Get all accounts berhasil
-- [ ] Search accounts berhasil
-
-### Profile Module
-- [ ] Create profile berhasil
-- [ ] Get my profile berhasil
-- [ ] Get other user profile berhasil
-- [ ] Update profile berhasil
-- [ ] Delete profile berhasil
-- [ ] Get all profiles dengan pagination berhasil
-- [ ] Search profiles berhasil
-
----
-
-## 🚨 Error Handling
-
-### 400 Bad Request
-```json
-{
-  "statusCode": 400,
-  "message": "Error message here",
-  "error": "Bad Request"
-}
-```
-
-### 401 Unauthorized
-```json
-{
-  "statusCode": 401,
-  "message": "Unauthorized"
-}
-```
-
-### 404 Not Found
-```json
-{
-  "statusCode": 404,
-  "message": "Resource not found"
-}
-```
-
----
-
-## 📌 Tips
-
-1. **Simpan JWT Token** - Gunakan environment variable di Postman untuk menyimpan token
-2. **Pagination** - Gunakan `skip` dan `take` untuk mengontrol pagination
-3. **Search** - Parameter `term` bersifat case-insensitive
-4. **Validasi Email** - Email harus format yang valid
-5. **Required Fields** - Semua fields profile bersifat optional untuk create/update
-
----
-
-## 🔗 Related Endpoints
-
-- **Auth:** `/auth/login`, `/auth/2fa/setup`, `/auth/2fa/verify`
-- **Users:** `/users/*` (dari users module)
-- **Account:** `/account/*` (user account management)
-- **Profile:** `/profile/*` (user profile information)
+### For DevOps Team
+1. When ready: Register site di Google reCAPTCHA Console
+2. Get SITE_KEY (for frontend) & SECRET_KEY (for backend)
+3. Update .env dengan SECRET_KEY
+4. Set ENVIRONMENT=production
+5. Monitor reCAPTCHA dashboard
 
 ---
 
 Generated: May 11, 2026
-Application Version: 2.0.0
+Application: onx-tenant v2.0.0
+Backend Status: ✅ Ready for Frontend Integration
