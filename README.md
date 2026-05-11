@@ -1,259 +1,486 @@
-# Account & Profile Module - Implementation Summary
+# Testing Guide - Account & Profile Module
 
-## 📦 Module Overview
-
-Saya telah membuat dua modul baru untuk aplikasi NestJS Anda:
-
-### 1. **Profile Module** (`src/profile/`)
-Mengelola informasi profile lengkap user dengan fields:
-- Name
-- NIK (Nomor Identitas Kependudukan)
-- Direktorat
-- Divisi
-- Departemen
-- Email Corporate
-- Email Non Corporate
-- Nomor HP
-
-### 2. **Account Module** (`src/account/`)
-Mengelola informasi account & security settings user:
-- Account info (username, role, 2FA status)
-- Account security (password changes, 2FA history)
-- Change password functionality
-- Account search & listing
+Panduan lengkap untuk testing API module Account dan Profile di Postman.
 
 ---
 
-## 🗂️ File Structure
+## 📋 Prerequisites
 
-### Profile Module
-```
-src/profile/
-├── profile.module.ts           # Module definition
-├── profile.controller.ts       # HTTP endpoints
-├── profile.service.ts          # Business logic
-└── dto/
-    └── profile.dto.ts          # Data Transfer Objects
-```
-
-### Account Module
-```
-src/account/
-├── account.module.ts           # Module definition
-├── account.controller.ts       # HTTP endpoints
-├── account.service.ts          # Business logic
-└── dto/
-    └── account.dto.ts          # Data Transfer Objects
-```
-
-### Database
-```
-src/database/
-├── entities/
-│   └── user_profile.entity.ts   # Database entity
-└── migrations/
-    └── CreateUserProfileTable.ts # Migration file
-```
+- Postman installed
+- Application running on `http://localhost:7001`
+- Default user credentials:
+  - **Username:** omnix
+  - **Password:** admin123
 
 ---
 
-## 🔌 API Endpoints
+## 🔐 Step 1: Login & Get JWT Token
 
-### Account Module (`/account`)
+### Endpoint
 ```
-GET    /account/me                    # Get own account info
-GET    /account/security              # Get account security info
-POST   /account/change-password       # Change password
-GET    /account/list/all              # Get all accounts (with pagination)
-GET    /account/search/find           # Search accounts by username/name
+POST http://localhost:7001/auth/login
+Content-Type: application/json
 ```
 
-### Profile Module (`/profile`)
+### Request Body
+```json
+{
+  "username": "omnix",
+  "password": "admin123",
+  "recaptchaToken": "test-token-dev"
+}
 ```
-POST   /profile                       # Create profile for logged-in user
-GET    /profile/me                    # Get own profile
-GET    /profile/:userId               # Get other user profile
-PUT    /profile                       # Update own profile
-PUT    /profile/:userId               # Update other user profile
-DELETE /profile                       # Delete own profile
-DELETE /profile/:userId               # Delete other user profile
-GET    /profile/list/all              # Get all profiles (with pagination)
-GET    /profile/search/find           # Search profiles
+
+### Response
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Im9tbml4IiwiaWQiOjEsImlhdCI6MTY4NDA2NzUwMCwiZXhwIjoxNjg0MTUzOTAwfQ.xyz..."
+}
 ```
+
+**💡 Simpan token ini untuk semua request berikutnya!**
 
 ---
 
-## 🔐 Authentication & Authorization
+## 👤 ACCOUNT Module Testing
 
-Semua endpoints dilindungi dengan `JwtAuthGuard`:
-- Memerlukan Bearer token di header `Authorization`
-- User hanya bisa mengakses endpoint sesuai role mereka
+### 1. Get My Account Info
+```
+GET http://localhost:7001/account/me
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
+```
 
-```javascript
-@UseGuards(JwtAuthGuard)
-async getMyProfile(@Request() req): Promise<ProfileResponseDto> {
-  return this.profileService.getProfileByUserId(req.user.id);
+**Response:**
+```json
+{
+  "id": 1,
+  "username": "omnix",
+  "name": "Omnix Admin",
+  "role": "ADMIN",
+  "twoFactorEnabled": false,
+  "createdAt": "2025-11-15T10:30:00.000Z"
 }
 ```
 
 ---
 
-## 💾 Database Schema
+### 2. Get Account Security Info
+```
+GET http://localhost:7001/account/security
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
+```
 
-### user_profile Table
-```sql
-CREATE TABLE `user_profile` (
-  `id` varchar(36) PRIMARY KEY,                    -- UUID
-  `userId` varchar(255) UNIQUE NOT NULL,          -- Link to user
-  `name` varchar(255) NULL,                       -- Full name
-  `nik` varchar(20) NULL,                         -- National ID
-  `direktorat` varchar(255) NULL,                 -- Directorate
-  `divisi` varchar(255) NULL,                     -- Division
-  `departemen` varchar(255) NULL,                 -- Department
-  `emailCorporate` varchar(255) NULL,             -- Corporate email
-  `emailNonCorporate` varchar(255) NULL,          -- Personal email
-  `nomorHp` varchar(20) NULL,                     -- Phone number
-  `createdAt` datetime DEFAULT CURRENT_TIMESTAMP,
-  `updatedAt` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX `IDX_user_profile_userId` (`userId`)
-);
+**Response:**
+```json
+{
+  "id": 1,
+  "username": "omnix",
+  "name": "Omnix Admin",
+  "role": "ADMIN",
+  "lastPasswordChange": "2025-11-15T10:30:00.000Z",
+  "twoFactorEnabled": false,
+  "twoFactorEnabledAt": null
+}
 ```
 
 ---
 
-## 🚀 Integration Points
-
-### 1. Connected to Auth Module
-- Account endpoints show 2FA status
-- Both modules work together for authentication
-
-### 2. Connected to User Module
-- Profile links to user via userId
-- Account module uses User entity for account info
-
-### 3. Connected to 2FA System
-- Account security endpoint shows 2FA enabled status
-- Shows when 2FA was enabled
-
----
-
-## 📋 Key Features
-
-### Profile Service
-✅ CRUD operations (Create, Read, Update, Delete)
-✅ Search by name, NIK, email
-✅ Pagination support
-✅ Validation for duplicate profiles per user
-✅ Partial updates supported
-
-### Account Service
-✅ Get account information
-✅ Get security information
-✅ Change password with validation
-✅ Search accounts
-✅ Listing with pagination
-✅ Password strength validation (min 8 chars)
-✅ Old password verification
-✅ Prevent using same password
-
----
-
-## 🔄 Request/Response Flow
-
-### Create Profile Flow
+### 3. Change Password
 ```
-1. User sends POST /profile dengan profile data
-2. Controller receives request dengan JWT token
-3. JwtAuthGuard validates token
-4. ProfileService checks if profile already exists
-5. Create new profile record di database
-6. Return created profile dengan ID
+POST http://localhost:7001/account/change-password
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
 ```
 
-### Change Password Flow
+**Request Body:**
+```json
+{
+  "oldPassword": "admin123",
+  "newPassword": "newPassword123",
+  "confirmPassword": "newPassword123"
+}
 ```
-1. User sends POST /account/change-password dengan old & new password
-2. Controller verifies JWT token
-3. AccountService loads user dari database
-4. Verify old password dengan bcrypt
-5. Hash new password
-6. Update user password di database
-7. Return success message
+
+**Response (Success):**
+```json
+{
+  "message": "Password changed successfully"
+}
+```
+
+**Response (Error - Old password incorrect):**
+```json
+{
+  "statusCode": 401,
+  "message": "Old password is incorrect"
+}
+```
+
+**Response (Error - Password too short):**
+```json
+{
+  "statusCode": 400,
+  "message": "New password must be at least 8 characters long"
+}
 ```
 
 ---
 
-## 📊 Database Relationship
-
+### 4. Get All Accounts (Admin)
 ```
-User Entity (user table)
-    ↓
-    └── Has One ──→ UserProfile Entity
-    └── Has One ──→ UserTwoFactor Entity
+GET http://localhost:7001/account/list/all?skip=0&take=50
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
 ```
 
----
-
-## 🛡️ Security Considerations
-
-1. **Password Hashing** - Passwords di-hash menggunakan bcryptjs
-2. **JWT Protection** - Semua endpoint memerlukan valid JWT token
-3. **Validation** - Input data di-validate menggunakan class-validator
-4. **Unique Constraints** - Setiap user hanya bisa punya satu profile
-5. **Error Messages** - Error messages tidak mengungkap detail database
-
----
-
-## 🧪 Testing
-
-Gunakan file **ACCOUNT_PROFILE_TESTING_GUIDE.md** untuk:
-- Contoh request/response
-- Step-by-step testing procedures
-- Error scenarios
-- Postman collection examples
-
----
-
-## 🔧 Modules Registered
-
-Update ke **app.module.ts**:
-```typescript
-imports: [
-  // ... existing modules
-  ProfileModule,
-  AccountModule,
-]
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "username": "omnix",
+      "name": "Omnix Admin",
+      "role": "ADMIN",
+      "twoFactorEnabled": false,
+      "createdAt": "2025-11-15T10:30:00.000Z"
+    },
+    {
+      "id": 2,
+      "username": "user1",
+      "name": "User One",
+      "role": "REQUESTER",
+      "twoFactorEnabled": true,
+      "createdAt": "2025-11-15T11:00:00.000Z"
+    }
+  ],
+  "total": 2
+}
 ```
 
 ---
 
-## 📝 Migration Info
+### 5. Search Accounts
+```
+GET http://localhost:7001/account/search/find?term=omnix&skip=0&take=50
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
+```
 
-Migration file: `CreateUserProfileTable1684000000001`
-Status: ✅ Executed successfully
-Created table: `user_profile`
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "username": "omnix",
+      "name": "Omnix Admin",
+      "role": "ADMIN",
+      "twoFactorEnabled": false,
+      "createdAt": "2025-11-15T10:30:00.000Z"
+    }
+  ],
+  "total": 1
+}
+```
 
 ---
 
-## 🎯 Next Steps
+## 📝 PROFILE Module Testing
 
-1. **Test di Postman** - Gunakan ACCOUNT_PROFILE_TESTING_GUIDE.md
-2. **Integrate ke Frontend** - Implement UI untuk profile management
-3. **Add Validation Rules** - Tambahkan business logic sesuai kebutuhan
-4. **Add Logging** - Track account & profile changes
-5. **Add Audit Trail** - Catat siapa yang mengubah apa dan kapan
+### 1. Create User Profile
+```
+POST http://localhost:7001/profile
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
+```
+
+**Request Body (All Optional):**
+```json
+{
+  "name": "John Doe",
+  "nik": "1234567890123456",
+  "direktorat": "IT & Digital",
+  "divisi": "Backend Engineering",
+  "departemen": "API Development",
+  "emailCorporate": "john.doe@company.com",
+  "emailNonCorporate": "john.doe@gmail.com",
+  "nomorHp": "081234567890"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "userId": "1",
+  "name": "John Doe",
+  "nik": "1234567890123456",
+  "direktorat": "IT & Digital",
+  "divisi": "Backend Engineering",
+  "departemen": "API Development",
+  "emailCorporate": "john.doe@company.com",
+  "emailNonCorporate": "john.doe@gmail.com",
+  "nomorHp": "081234567890",
+  "createdAt": "2025-11-15T15:30:00.000Z",
+  "updatedAt": "2025-11-15T15:30:00.000Z"
+}
+```
 
 ---
 
-## 📞 Support
+### 2. Get My Profile
+```
+GET http://localhost:7001/profile/me
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
+```
 
-Untuk pertanyaan atau modifikasi:
-- Lihat kode di `src/profile/` dan `src/account/`
-- Modifikasi DTOs untuk requirements tambahan
-- Extend services untuk business logic lebih kompleks
+**Response:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "userId": "1",
+  "name": "John Doe",
+  "nik": "1234567890123456",
+  "direktorat": "IT & Digital",
+  "divisi": "Backend Engineering",
+  "departemen": "API Development",
+  "emailCorporate": "john.doe@company.com",
+  "emailNonCorporate": "john.doe@gmail.com",
+  "nomorHp": "081234567890",
+  "createdAt": "2025-11-15T15:30:00.000Z",
+  "updatedAt": "2025-11-15T15:30:00.000Z"
+}
+```
+
+---
+
+### 3. Get Other User Profile
+```
+GET http://localhost:7001/profile/2
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
+```
+
+(Replace `2` with actual userId)
+
+---
+
+### 4. Update My Profile
+```
+PUT http://localhost:7001/profile
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
+```
+
+**Request Body (Update specific fields):**
+```json
+{
+  "name": "John Updated",
+  "direktorat": "IT & Digital Updated",
+  "nomorHp": "081234567899"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "userId": "1",
+  "name": "John Updated",
+  "nik": "1234567890123456",
+  "direktorat": "IT & Digital Updated",
+  "divisi": "Backend Engineering",
+  "departemen": "API Development",
+  "emailCorporate": "john.doe@company.com",
+  "emailNonCorporate": "john.doe@gmail.com",
+  "nomorHp": "081234567899",
+  "createdAt": "2025-11-15T15:30:00.000Z",
+  "updatedAt": "2025-11-15T15:35:00.000Z"
+}
+```
+
+---
+
+### 5. Update Other User Profile
+```
+PUT http://localhost:7001/profile/2
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
+```
+
+(Replace `2` with actual userId)
+
+---
+
+### 6. Delete My Profile
+```
+DELETE http://localhost:7001/profile
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
+```
+
+**Response:**
+```json
+{
+  "message": "Profile deleted successfully"
+}
+```
+
+---
+
+### 7. Delete Other User Profile
+```
+DELETE http://localhost:7001/profile/2
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
+```
+
+(Replace `2` with actual userId)
+
+---
+
+### 8. Get All Profiles
+```
+GET http://localhost:7001/profile/list/all?skip=0&take=50
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
+```
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "userId": "1",
+      "name": "John Doe",
+      "nik": "1234567890123456",
+      "direktorat": "IT & Digital",
+      "divisi": "Backend Engineering",
+      "departemen": "API Development",
+      "emailCorporate": "john.doe@company.com",
+      "emailNonCorporate": "john.doe@gmail.com",
+      "nomorHp": "081234567890",
+      "createdAt": "2025-11-15T15:30:00.000Z",
+      "updatedAt": "2025-11-15T15:30:00.000Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+### 9. Search Profiles
+```
+GET http://localhost:7001/profile/search/find?term=john&skip=0&take=50
+Authorization: Bearer <YOUR_JWT_TOKEN>
+Content-Type: application/json
+```
+
+**Cari berdasarkan:**
+- Name
+- NIK
+- Email Corporate
+- User ID
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "userId": "1",
+      "name": "John Doe",
+      "nik": "1234567890123456",
+      "direktorat": "IT & Digital",
+      "divisi": "Backend Engineering",
+      "departemen": "API Development",
+      "emailCorporate": "john.doe@company.com",
+      "emailNonCorporate": "john.doe@gmail.com",
+      "nomorHp": "081234567890",
+      "createdAt": "2025-11-15T15:30:00.000Z",
+      "updatedAt": "2025-11-15T15:30:00.000Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+## ✅ Testing Checklist
+
+### Account Module
+- [ ] Login mendapat JWT token
+- [ ] Get account info berhasil
+- [ ] Get security info berhasil
+- [ ] Change password berhasil (dengan password lama yang benar)
+- [ ] Get all accounts berhasil
+- [ ] Search accounts berhasil
+
+### Profile Module
+- [ ] Create profile berhasil
+- [ ] Get my profile berhasil
+- [ ] Get other user profile berhasil
+- [ ] Update profile berhasil
+- [ ] Delete profile berhasil
+- [ ] Get all profiles dengan pagination berhasil
+- [ ] Search profiles berhasil
+
+---
+
+## 🚨 Error Handling
+
+### 400 Bad Request
+```json
+{
+  "statusCode": 400,
+  "message": "Error message here",
+  "error": "Bad Request"
+}
+```
+
+### 401 Unauthorized
+```json
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+### 404 Not Found
+```json
+{
+  "statusCode": 404,
+  "message": "Resource not found"
+}
+```
+
+---
+
+## 📌 Tips
+
+1. **Simpan JWT Token** - Gunakan environment variable di Postman untuk menyimpan token
+2. **Pagination** - Gunakan `skip` dan `take` untuk mengontrol pagination
+3. **Search** - Parameter `term` bersifat case-insensitive
+4. **Validasi Email** - Email harus format yang valid
+5. **Required Fields** - Semua fields profile bersifat optional untuk create/update
+
+---
+
+## 🔗 Related Endpoints
+
+- **Auth:** `/auth/login`, `/auth/2fa/setup`, `/auth/2fa/verify`
+- **Users:** `/users/*` (dari users module)
+- **Account:** `/account/*` (user account management)
+- **Profile:** `/profile/*` (user profile information)
 
 ---
 
 Generated: May 11, 2026
-Application: onx-tenant v2.0.0
-Status: ✅ Ready for Testing
+Application Version: 2.0.0
