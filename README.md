@@ -1,378 +1,287 @@
-# reCAPTCHA Integration Summary
+# 2FA Conditional Login Testing Guide
 
-Status implementasi reCAPTCHA v3 untuk aplikasi ONX Tenancy.
-
----
-
-## ✅ Backend Status
-
-### Completed
-- [x] **RecaptchaService** - Service untuk verify token
-- [x] **Mock Token Support** - Testing dengan `test-token-dev` di development
-- [x] **Production Ready** - Full Google reCAPTCHA integration
-- [x] **Error Handling** - Proper error messages dan logging
-- [x] **Auth Flow** - Login endpoint sudah integrate reCAPTCHA
-- [x] **Environment Config** - Setup lengkap di .env
-
-### Backend Implementation Details
-
-#### 1. RecaptchaService (`src/auth/recaptcha.service.ts`)
-```
-✓ Development Mode Support
-  - Mock token: 'test-token-dev' → auto-pass
-  - Useful untuk testing tanpa real reCAPTCHA
-
-✓ Production Mode
-  - Verify dengan Google API: https://www.google.com/recaptcha/api/siteverify
-  - Check success flag
-  - Validate score >= threshold (default 0.5)
-  - Validate action = 'login'
-
-✓ Error Handling
-  - Token required validation
-  - Secret key validation
-  - Score threshold validation
-  - Network error handling
-```
-
-#### 2. Auth Flow (`src/auth/auth.controller.ts`)
-```
-POST /auth/login
-├─ Body: username, password, recaptchaToken
-├─ Call AuthService.validateUserWithRecaptcha()
-│  ├─ Call RecaptchaService.verifyToken()
-│  │  └─ Return boolean (true/false)
-│  ├─ If reCAPTCHA ✓ → validate credentials
-│  └─ If credentials ✓ → return JWT token
-└─ Return: { access_token: "..." }
-```
-
-#### 3. Environment Variables
-```
-RECAPTCHA_SECRET_KEY        = Secret key dari Google
-RECAPTCHA_SCORE_THRESHOLD   = 0.5 (0-1, higher = stricter)
-RECAPTCHA_DEV_TOKEN         = test-token-dev
-ENVIRONMENT                 = development or production
-```
+## Overview
+The login endpoint now returns 2FA status information to guide the frontend on what action to take next:
+- **If 2FA not setup**: Returns QR code, secret, and backup codes
+- **If 2FA setup but not verified**: Returns message to verify OTP
+- **If 2FA fully enabled**: Returns normal JWT token
 
 ---
 
-## 📋 Frontend Status
+## Test Scenario 1: First Time Login (2FA Not Setup)
 
-### Current Status
-- ✅ Frontend sudah mulai integration (lihat screenshot)
-- ✅ Mock token testing ready
-- ⏳ Real reCAPTCHA keys needed
-- ⏳ Frontend QR code implementation
-- ⏳ UI/UX refinement
-
-### What Frontend Needs
-
-#### 1. Get reCAPTCHA Keys
-Go to: https://www.google.com/recaptcha/admin
-
-```
-Site Registration:
-├─ Site Label: ONX Tenancy App
-├─ reCAPTCHA Type: v3
-├─ Domains: yourdomain.com, api.yourdomain.com
-└─ Get Keys:
-   ├─ SITE_KEY (public, for frontend)
-   └─ SECRET_KEY (secret, for backend)
+### Request
+```bash
+curl -X POST http://localhost:3000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "admin",
+    "password": "admin123",
+    "recaptchaToken": "test-token-dev"
+  }'
 ```
 
-#### 2. Update Backend .env
-```env
-RECAPTCHA_SECRET_KEY=<YOUR_SECRET_KEY_FROM_GOOGLE>
-RECAPTCHA_SCORE_THRESHOLD=0.5
-RECAPTCHA_DEV_TOKEN=test-token-dev
-ENVIRONMENT=production  # Change to production
-```
-
-#### 3. Frontend Implementation
-```javascript
-// 1. Load reCAPTCHA script
-<script src="https://www.google.com/recaptcha/api.js"></script>
-
-// 2. On login submit
-const token = await window.grecaptcha.execute(
-  'YOUR_SITE_KEY',
-  { action: 'login' }
-);
-
-// 3. Send with credentials
-axios.post('/auth/login', {
-  username: username,
-  password: password,
-  recaptchaToken: token  // ← reCAPTCHA token
-});
-```
-
-See: **RECAPTCHA_FRONTEND_INTEGRATION.md** for complete examples
-
----
-
-## 🧪 Testing Strategy
-
-### Phase 1: Development (Now)
-```
-✓ Backend running dengan ENVIRONMENT=development
-✓ Mock token: test-token-dev
-✓ No need untuk real Google reCAPTCHA keys
-✓ Perfect untuk frontend development
-```
-
-**Testing dengan Postman:**
-```
-POST /auth/login
+### Expected Response (Status: 200)
+```json
 {
-  "username": "omnix",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "two_factor_status": {
+    "is_enabled": false,
+    "requires_setup": true,
+    "message": "Please setup 2FA",
+    "qrCode": "data:image/png;base64,...",
+    "secret": "JBSWY3DPEBLW64TMMQ...",
+    "backup_codes": ["ABC123", "DEF456", ...],
+    "next_action": "/auth/2fa/setup"
+  }
+}
+```
+
+**Frontend Action**: Show QR code and ask user to scan with Google Authenticator/Authy
+
+---
+
+## Test Scenario 2: Setup 2FA with OTP Verification
+
+### Step 1: Setup 2FA (Get QR Code)
+```bash
+curl -X POST http://localhost:3000/auth/2fa/setup \
+  -H "Authorization: Bearer {access_token}" \
+  -H "Content-Type: application/json"
+```
+
+### Response
+```json
+{
+  "message": "Scan this QR code with Google Authenticator or Authy app",
+  "qrCode": "data:image/png;base64,...",
+  "secret": "JBSWY3DPEBLW64TMMQ...",
+  "backup_codes": ["ABC123", "DEF456", ...],
+  "instructions": "Verify OTP to enable 2FA. Save backup codes in a secure place."
+}
+```
+
+### Step 2: Check 2FA Status Before Verification
+```bash
+curl -X GET http://localhost:3000/auth/2fa/check-status \
+  -H "Authorization: Bearer {access_token}"
+```
+
+### Response
+```json
+{
+  "status": "verify_needed",
+  "is_enabled": false,
+  "message": "2FA setup in progress. Please verify OTP to complete setup.",
+  "next_action": "POST /auth/2fa/verify",
+  "requires_action": true
+}
+```
+
+**Frontend Action**: Show OTP input field and ask user to enter code from authenticator
+
+### Step 3: Verify OTP Code
+```bash
+curl -X POST http://localhost:3000/auth/2fa/verify \
+  -H "Authorization: Bearer {access_token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "otp": "123456"
+  }'
+```
+
+### Response
+```json
+{
+  "message": "2FA enabled successfully",
+  "is_enabled": true,
+  "backup_codes": ["ABC123", "DEF456", ...]
+}
+```
+
+**Frontend Action**: Show success message and save backup codes
+
+---
+
+## Test Scenario 3: Login with 2FA Already Enabled
+
+### Request
+```bash
+curl -X POST http://localhost:3000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "admin",
+    "password": "admin123",
+    "recaptchaToken": "test-token-dev"
+  }'
+```
+
+### Expected Response (Status: 200)
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "two_factor_status": {
+    "is_enabled": true,
+    "requires_setup": false,
+    "message": "Please verify your 2FA OTP code",
+    "next_action": "/auth/2fa/verify"
+  }
+}
+```
+
+**Frontend Action**: Redirect to OTP verification screen
+
+---
+
+## Test Scenario 4: Check 2FA Status After Full Setup
+
+### Request
+```bash
+curl -X GET http://localhost:3000/auth/2fa/check-status \
+  -H "Authorization: Bearer {access_token}"
+```
+
+### Response
+```json
+{
+  "status": "already_enabled",
+  "is_enabled": true,
+  "message": "2FA is already enabled and active.",
+  "enabled_at": "2026-05-12T05:35:00.000Z",
+  "device_name": "Unknown Device",
+  "next_action": "No action needed",
+  "requires_action": false
+}
+```
+
+---
+
+## Test Scenario 5: Disable 2FA
+
+### Request
+```bash
+curl -X POST http://localhost:3000/auth/2fa/disable \
+  -H "Authorization: Bearer {access_token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "otp": "123456"
+  }'
+```
+
+### Response
+```json
+{
+  "message": "2FA disabled successfully",
+  "is_enabled": false
+}
+```
+
+---
+
+## Test Scenario 6: Generate New Backup Codes
+
+### Request
+```bash
+curl -X POST http://localhost:3000/auth/2fa/backup-codes \
+  -H "Authorization: Bearer {access_token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "otp": "123456"
+  }'
+```
+
+### Response
+```json
+{
+  "message": "New backup codes generated",
+  "backup_codes": ["XYZ123", "UVW456", ...]
+}
+```
+
+---
+
+## Postman Setup Instructions
+
+### 1. Create Variables in Postman
+- Variable: `base_url` = `http://localhost:3000`
+- Variable: `access_token` = (populated after login)
+- Variable: `otp_code` = (populate with 6-digit code from authenticator)
+
+### 2. Create Request Collection
+
+#### Request 1: Login - First Time
+- **Method**: POST
+- **URL**: `{{base_url}}/auth/login`
+- **Body**:
+```json
+{
+  "username": "admin",
   "password": "admin123",
   "recaptchaToken": "test-token-dev"
 }
 ```
-
-**Response:**
+- **Tests**: 
+```javascript
+var jsonData = pm.response.json();
+pm.environment.set("access_token", jsonData.access_token);
+pm.test("Login returns 2FA status", function() {
+    pm.expect(jsonData.two_factor_status).to.exist;
+});
 ```
+
+#### Request 2: Check 2FA Status
+- **Method**: GET
+- **URL**: `{{base_url}}/auth/2fa/check-status`
+- **Headers**: `Authorization: Bearer {{access_token}}`
+
+#### Request 3: Setup 2FA
+- **Method**: POST
+- **URL**: `{{base_url}}/auth/2fa/setup`
+- **Headers**: `Authorization: Bearer {{access_token}}`
+
+#### Request 4: Verify OTP
+- **Method**: POST
+- **URL**: `{{base_url}}/auth/2fa/verify`
+- **Headers**: `Authorization: Bearer {{access_token}}`
+- **Body**:
+```json
 {
-  "access_token": "eyJhbGciOi..."
+  "otp": "{{otp_code}}"
 }
 ```
 
-### Phase 2: Staging (When ready)
-```
-⏳ Get real reCAPTCHA keys from Google
-⏳ Update RECAPTCHA_SECRET_KEY in .env
-⏳ Change ENVIRONMENT=staging
-⏳ Test dengan real Google tokens
-```
+---
 
-### Phase 3: Production
-```
-⏳ Verify all domains registered di Google Console
-⏳ Set ENVIRONMENT=production
-⏳ Set RECAPTCHA_SCORE_THRESHOLD appropriately (0.5-0.7)
-⏳ Monitor reCAPTCHA analytics
-⏳ Setup alerts untuk suspicious activity
-```
+## Notes for Testing
+
+1. **Getting OTP Codes**: Use Google Authenticator or Authy app
+   - Scan the QR code provided in setup response
+   - App will generate 6-digit codes that refresh every 30 seconds
+
+2. **Using Backup Codes**: If you lose access to authenticator
+   - Keep backup codes in a safe place
+   - Can be used instead of OTP to disable 2FA
+
+3. **Testing Without App**: 
+   - Scan QR code in browser using a QR code scanner
+   - Manually create a TOTP secret using the `secret` value
+   - Use online TOTP generators for testing (speakeasy lib uses standard TOTP)
+
+4. **Database State**:
+   - Each user has exactly one `user_two_factor` record
+   - Fields are stored in snake_case: `user_id`, `is_enabled`, `secret`, `backup_codes`
+   - `enabled_at` field records when 2FA was activated
 
 ---
 
-## 📊 Testing Flow Chart
+## Success Criteria
 
-```
-┌──────────────────────────────────┐
-│   DEVELOPMENT (Current Phase)    │
-├──────────────────────────────────┤
-│                                  │
-│  Frontend                        │
-│  ├─ Testing dengan mock token    │
-│  │  (test-token-dev)             │
-│  └─ No real reCAPTCHA needed     │
-│                                  │
-│  Backend                         │
-│  ├─ ENVIRONMENT=development      │
-│  ├─ Accept mock token            │
-│  └─ Return JWT token             │
-│                                  │
-│  Result: ✓ Login successful      │
-│                                  │
-└──────────────────────────────────┘
-           ↓ When ready
-┌──────────────────────────────────┐
-│  PRODUCTION (Later Phase)        │
-├──────────────────────────────────┤
-│                                  │
-│  Frontend                        │
-│  ├─ Load real reCAPTCHA script   │
-│  ├─ Get real SITE_KEY            │
-│  └─ Generate token via Google    │
-│                                  │
-│  Backend                         │
-│  ├─ ENVIRONMENT=production       │
-│  ├─ Verify token dengan Google   │
-│  ├─ Check score >= threshold     │
-│  └─ Return JWT token if valid    │
-│                                  │
-│  Result: ✓ Secure login          │
-│                                  │
-└──────────────────────────────────┘
-```
+✅ Login without 2FA shows "requires_setup: true" with QR code
+✅ Setup generates valid OTP secret and backup codes
+✅ Check status shows "verify_needed" after setup but before verification
+✅ Verify with correct OTP enables 2FA ("is_enabled: true")
+✅ Check status shows "already_enabled" after full setup
+✅ Login with 2FA enabled returns "requires_setup: false"
+✅ Can disable 2FA with correct OTP
+✅ Can generate new backup codes
 
----
-
-## 🎯 Integration Checklist
-
-### Backend (Ready ✓)
-- [x] RecaptchaService created
-- [x] Auth flow updated
-- [x] Mock token support
-- [x] Error handling
-- [x] Logging
-- [x] Environment config
-
-### Frontend (In Progress ⏳)
-- [ ] Load reCAPTCHA script
-- [ ] Get real Site Key from Google
-- [ ] Implement grecaptcha.execute()
-- [ ] Send token dengan login request
-- [ ] Handle JWT response
-- [ ] Save JWT ke localStorage
-- [ ] Use JWT untuk subsequent requests
-
-### Testing (Ready ✓ for Development)
-- [x] Postman collection created
-- [x] Testing guide available
-- [x] Mock token working
-- [ ] Real token testing (pending real keys)
-
-### Monitoring (Setup Later)
-- [ ] reCAPTCHA dashboard monitoring
-- [ ] Score analytics
-- [ ] Bot detection tracking
-- [ ] Error rate monitoring
-
----
-
-## 📝 Implementation Timeline
-
-### Week 1: Development Setup ✓ (Now)
-```
-✓ Backend ready
-✓ Mock token testing
-✓ Documentation created
-→ Frontend can start development
-```
-
-### Week 2: Frontend Integration
-```
-→ Frontend implement grecaptcha.execute()
-→ Test dengan mock token
-→ Verify JWT token handling
-```
-
-### Week 3: Real reCAPTCHA Setup
-```
-→ Register site di Google Console
-→ Get real SITE_KEY & SECRET_KEY
-→ Update .env dengan real keys
-→ Test dengan real tokens
-```
-
-### Week 4: QA & Monitoring
-```
-→ Full end-to-end testing
-→ Monitor reCAPTCHA analytics
-→ Fine-tune score threshold
-→ Ready for production
-```
-
----
-
-## 📚 Documentation Files
-
-1. **RECAPTCHA_FRONTEND_INTEGRATION.md**
-   - Complete frontend implementation guide
-   - React & Vue examples
-   - Testing instructions
-
-2. **POSTMAN_RECAPTCHA_TESTING.json**
-   - Postman collection
-   - Ready-to-use requests
-   - Testing scenarios
-
-3. **ACCOUNT_PROFILE_TESTING_GUIDE.md**
-   - Account & Profile API testing
-   - Complete endpoints reference
-
----
-
-## 🔗 Related Documentation
-
-- [Google reCAPTCHA v3 Docs](https://developers.google.com/recaptcha/docs/v3)
-- [NestJS Authentication](https://docs.nestjs.com/security/authentication)
-- [Postman Guide](https://learning.postman.com/docs/)
-
----
-
-## 💡 Tips for Frontend Developer
-
-### Development (Test Mode)
-```javascript
-// ✓ During development, use mock token
-const token = 'test-token-dev';
-
-axios.post('/auth/login', {
-  username: 'omnix',
-  password: 'admin123',
-  recaptchaToken: token  // ← Mock token works!
-});
-```
-
-### Production (Real Token)
-```javascript
-// ✓ When live, use real Google token
-const token = await window.grecaptcha.execute(
-  'YOUR_SITE_KEY_FROM_GOOGLE',
-  { action: 'login' }
-);
-
-axios.post('/auth/login', {
-  username: 'omnix',
-  password: 'admin123',
-  recaptchaToken: token  // ← Real token from Google
-});
-```
-
----
-
-## 🚨 Common Issues & Solutions
-
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| "socket hang up" | Server not running | `docker-compose up -d` |
-| "reCAPTCHA token required" | Token not sent | Check frontend code sends token |
-| "verification failed" | Invalid token | Make sure token is 'test-token-dev' or real |
-| "score too low" | Bot detected | Lower RECAPTCHA_SCORE_THRESHOLD |
-| "Script not loading" | Wrong URL | Check reCAPTCHA script src is correct |
-
----
-
-## ✨ Current Status Summary
-
-```
-✅ Backend:      READY FOR TESTING
-✅ Mock Token:   READY (test-token-dev)
-✅ JWT Auth:     READY
-⏳ Real Keys:    PENDING (Get from Google Console)
-⏳ Frontend:     IN PROGRESS
-⏳ 2FA:          READY (Bonus feature implemented)
-⏳ Monitoring:   SETUP LATER
-```
-
----
-
-## 🎯 Next Action Items
-
-### For Backend Team
-1. ✅ Already done - Backend is ready!
-
-### For Frontend Team
-1. Load reCAPTCHA script in HTML
-2. Implement grecaptcha.execute() function
-3. Send token dengan login request
-4. Handle JWT token response
-5. Save JWT untuk authenticated requests
-
-### For DevOps Team
-1. When ready: Register site di Google reCAPTCHA Console
-2. Get SITE_KEY (for frontend) & SECRET_KEY (for backend)
-3. Update .env dengan SECRET_KEY
-4. Set ENVIRONMENT=production
-5. Monitor reCAPTCHA dashboard
-
----
-
-Generated: May 11, 2026
-Application: onx-tenant v2.0.0
-Backend Status: ✅ Ready for Frontend Integration
