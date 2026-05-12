@@ -1,287 +1,259 @@
-# 2FA Conditional Login Testing Guide
+# Account & Profile Module - Implementation Summary
 
-## Overview
-The login endpoint now returns 2FA status information to guide the frontend on what action to take next:
-- **If 2FA not setup**: Returns QR code, secret, and backup codes
-- **If 2FA setup but not verified**: Returns message to verify OTP
-- **If 2FA fully enabled**: Returns normal JWT token
+## 📦 Module Overview
 
----
+Saya telah membuat dua modul baru untuk aplikasi NestJS Anda:
 
-## Test Scenario 1: First Time Login (2FA Not Setup)
+### 1. **Profile Module** (`src/profile/`)
+Mengelola informasi profile lengkap user dengan fields:
+- Name
+- NIK (Nomor Identitas Kependudukan)
+- Direktorat
+- Divisi
+- Departemen
+- Email Corporate
+- Email Non Corporate
+- Nomor HP
 
-### Request
-```bash
-curl -X POST http://localhost:3000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "admin",
-    "password": "admin123",
-    "recaptchaToken": "test-token-dev"
-  }'
-```
-
-### Expected Response (Status: 200)
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "two_factor_status": {
-    "is_enabled": false,
-    "requires_setup": true,
-    "message": "Please setup 2FA",
-    "qrCode": "data:image/png;base64,...",
-    "secret": "JBSWY3DPEBLW64TMMQ...",
-    "backup_codes": ["ABC123", "DEF456", ...],
-    "next_action": "/auth/2fa/setup"
-  }
-}
-```
-
-**Frontend Action**: Show QR code and ask user to scan with Google Authenticator/Authy
+### 2. **Account Module** (`src/account/`)
+Mengelola informasi account & security settings user:
+- Account info (username, role, 2FA status)
+- Account security (password changes, 2FA history)
+- Change password functionality
+- Account search & listing
 
 ---
 
-## Test Scenario 2: Setup 2FA with OTP Verification
+## 🗂️ File Structure
 
-### Step 1: Setup 2FA (Get QR Code)
-```bash
-curl -X POST http://localhost:3000/auth/2fa/setup \
-  -H "Authorization: Bearer {access_token}" \
-  -H "Content-Type: application/json"
+### Profile Module
+```
+src/profile/
+├── profile.module.ts           # Module definition
+├── profile.controller.ts       # HTTP endpoints
+├── profile.service.ts          # Business logic
+└── dto/
+    └── profile.dto.ts          # Data Transfer Objects
 ```
 
-### Response
-```json
-{
-  "message": "Scan this QR code with Google Authenticator or Authy app",
-  "qrCode": "data:image/png;base64,...",
-  "secret": "JBSWY3DPEBLW64TMMQ...",
-  "backup_codes": ["ABC123", "DEF456", ...],
-  "instructions": "Verify OTP to enable 2FA. Save backup codes in a secure place."
-}
+### Account Module
+```
+src/account/
+├── account.module.ts           # Module definition
+├── account.controller.ts       # HTTP endpoints
+├── account.service.ts          # Business logic
+└── dto/
+    └── account.dto.ts          # Data Transfer Objects
 ```
 
-### Step 2: Check 2FA Status Before Verification
-```bash
-curl -X GET http://localhost:3000/auth/2fa/check-status \
-  -H "Authorization: Bearer {access_token}"
+### Database
 ```
-
-### Response
-```json
-{
-  "status": "verify_needed",
-  "is_enabled": false,
-  "message": "2FA setup in progress. Please verify OTP to complete setup.",
-  "next_action": "POST /auth/2fa/verify",
-  "requires_action": true
-}
-```
-
-**Frontend Action**: Show OTP input field and ask user to enter code from authenticator
-
-### Step 3: Verify OTP Code
-```bash
-curl -X POST http://localhost:3000/auth/2fa/verify \
-  -H "Authorization: Bearer {access_token}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "otp": "123456"
-  }'
-```
-
-### Response
-```json
-{
-  "message": "2FA enabled successfully",
-  "is_enabled": true,
-  "backup_codes": ["ABC123", "DEF456", ...]
-}
-```
-
-**Frontend Action**: Show success message and save backup codes
-
----
-
-## Test Scenario 3: Login with 2FA Already Enabled
-
-### Request
-```bash
-curl -X POST http://localhost:3000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "admin",
-    "password": "admin123",
-    "recaptchaToken": "test-token-dev"
-  }'
-```
-
-### Expected Response (Status: 200)
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "two_factor_status": {
-    "is_enabled": true,
-    "requires_setup": false,
-    "message": "Please verify your 2FA OTP code",
-    "next_action": "/auth/2fa/verify"
-  }
-}
-```
-
-**Frontend Action**: Redirect to OTP verification screen
-
----
-
-## Test Scenario 4: Check 2FA Status After Full Setup
-
-### Request
-```bash
-curl -X GET http://localhost:3000/auth/2fa/check-status \
-  -H "Authorization: Bearer {access_token}"
-```
-
-### Response
-```json
-{
-  "status": "already_enabled",
-  "is_enabled": true,
-  "message": "2FA is already enabled and active.",
-  "enabled_at": "2026-05-12T05:35:00.000Z",
-  "device_name": "Unknown Device",
-  "next_action": "No action needed",
-  "requires_action": false
-}
+src/database/
+├── entities/
+│   └── user_profile.entity.ts   # Database entity
+└── migrations/
+    └── CreateUserProfileTable.ts # Migration file
 ```
 
 ---
 
-## Test Scenario 5: Disable 2FA
+## 🔌 API Endpoints
 
-### Request
-```bash
-curl -X POST http://localhost:3000/auth/2fa/disable \
-  -H "Authorization: Bearer {access_token}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "otp": "123456"
-  }'
+### Account Module (`/account`)
+```
+GET    /account/me                    # Get own account info
+GET    /account/security              # Get account security info
+POST   /account/change-password       # Change password
+GET    /account/list/all              # Get all accounts (with pagination)
+GET    /account/search/find           # Search accounts by username/name
 ```
 
-### Response
-```json
-{
-  "message": "2FA disabled successfully",
-  "is_enabled": false
-}
+### Profile Module (`/profile`)
 ```
-
----
-
-## Test Scenario 6: Generate New Backup Codes
-
-### Request
-```bash
-curl -X POST http://localhost:3000/auth/2fa/backup-codes \
-  -H "Authorization: Bearer {access_token}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "otp": "123456"
-  }'
-```
-
-### Response
-```json
-{
-  "message": "New backup codes generated",
-  "backup_codes": ["XYZ123", "UVW456", ...]
-}
+POST   /profile                       # Create profile for logged-in user
+GET    /profile/me                    # Get own profile
+GET    /profile/:userId               # Get other user profile
+PUT    /profile                       # Update own profile
+PUT    /profile/:userId               # Update other user profile
+DELETE /profile                       # Delete own profile
+DELETE /profile/:userId               # Delete other user profile
+GET    /profile/list/all              # Get all profiles (with pagination)
+GET    /profile/search/find           # Search profiles
 ```
 
 ---
 
-## Postman Setup Instructions
+## 🔐 Authentication & Authorization
 
-### 1. Create Variables in Postman
-- Variable: `base_url` = `http://localhost:3000`
-- Variable: `access_token` = (populated after login)
-- Variable: `otp_code` = (populate with 6-digit code from authenticator)
+Semua endpoints dilindungi dengan `JwtAuthGuard`:
+- Memerlukan Bearer token di header `Authorization`
+- User hanya bisa mengakses endpoint sesuai role mereka
 
-### 2. Create Request Collection
-
-#### Request 1: Login - First Time
-- **Method**: POST
-- **URL**: `{{base_url}}/auth/login`
-- **Body**:
-```json
-{
-  "username": "admin",
-  "password": "admin123",
-  "recaptchaToken": "test-token-dev"
-}
-```
-- **Tests**: 
 ```javascript
-var jsonData = pm.response.json();
-pm.environment.set("access_token", jsonData.access_token);
-pm.test("Login returns 2FA status", function() {
-    pm.expect(jsonData.two_factor_status).to.exist;
-});
-```
-
-#### Request 2: Check 2FA Status
-- **Method**: GET
-- **URL**: `{{base_url}}/auth/2fa/check-status`
-- **Headers**: `Authorization: Bearer {{access_token}}`
-
-#### Request 3: Setup 2FA
-- **Method**: POST
-- **URL**: `{{base_url}}/auth/2fa/setup`
-- **Headers**: `Authorization: Bearer {{access_token}}`
-
-#### Request 4: Verify OTP
-- **Method**: POST
-- **URL**: `{{base_url}}/auth/2fa/verify`
-- **Headers**: `Authorization: Bearer {{access_token}}`
-- **Body**:
-```json
-{
-  "otp": "{{otp_code}}"
+@UseGuards(JwtAuthGuard)
+async getMyProfile(@Request() req): Promise<ProfileResponseDto> {
+  return this.profileService.getProfileByUserId(req.user.id);
 }
 ```
 
 ---
 
-## Notes for Testing
+## 💾 Database Schema
 
-1. **Getting OTP Codes**: Use Google Authenticator or Authy app
-   - Scan the QR code provided in setup response
-   - App will generate 6-digit codes that refresh every 30 seconds
-
-2. **Using Backup Codes**: If you lose access to authenticator
-   - Keep backup codes in a safe place
-   - Can be used instead of OTP to disable 2FA
-
-3. **Testing Without App**: 
-   - Scan QR code in browser using a QR code scanner
-   - Manually create a TOTP secret using the `secret` value
-   - Use online TOTP generators for testing (speakeasy lib uses standard TOTP)
-
-4. **Database State**:
-   - Each user has exactly one `user_two_factor` record
-   - Fields are stored in snake_case: `user_id`, `is_enabled`, `secret`, `backup_codes`
-   - `enabled_at` field records when 2FA was activated
+### user_profile Table
+```sql
+CREATE TABLE `user_profile` (
+  `id` varchar(36) PRIMARY KEY,                    -- UUID
+  `userId` varchar(255) UNIQUE NOT NULL,          -- Link to user
+  `name` varchar(255) NULL,                       -- Full name
+  `nik` varchar(20) NULL,                         -- National ID
+  `direktorat` varchar(255) NULL,                 -- Directorate
+  `divisi` varchar(255) NULL,                     -- Division
+  `departemen` varchar(255) NULL,                 -- Department
+  `emailCorporate` varchar(255) NULL,             -- Corporate email
+  `emailNonCorporate` varchar(255) NULL,          -- Personal email
+  `nomorHp` varchar(20) NULL,                     -- Phone number
+  `createdAt` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updatedAt` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `IDX_user_profile_userId` (`userId`)
+);
+```
 
 ---
 
-## Success Criteria
+## 🚀 Integration Points
 
-✅ Login without 2FA shows "requires_setup: true" with QR code
-✅ Setup generates valid OTP secret and backup codes
-✅ Check status shows "verify_needed" after setup but before verification
-✅ Verify with correct OTP enables 2FA ("is_enabled: true")
-✅ Check status shows "already_enabled" after full setup
-✅ Login with 2FA enabled returns "requires_setup: false"
-✅ Can disable 2FA with correct OTP
-✅ Can generate new backup codes
+### 1. Connected to Auth Module
+- Account endpoints show 2FA status
+- Both modules work together for authentication
 
+### 2. Connected to User Module
+- Profile links to user via userId
+- Account module uses User entity for account info
+
+### 3. Connected to 2FA System
+- Account security endpoint shows 2FA enabled status
+- Shows when 2FA was enabled
+
+---
+
+## 📋 Key Features
+
+### Profile Service
+✅ CRUD operations (Create, Read, Update, Delete)
+✅ Search by name, NIK, email
+✅ Pagination support
+✅ Validation for duplicate profiles per user
+✅ Partial updates supported
+
+### Account Service
+✅ Get account information
+✅ Get security information
+✅ Change password with validation
+✅ Search accounts
+✅ Listing with pagination
+✅ Password strength validation (min 8 chars)
+✅ Old password verification
+✅ Prevent using same password
+
+---
+
+## 🔄 Request/Response Flow
+
+### Create Profile Flow
+```
+1. User sends POST /profile dengan profile data
+2. Controller receives request dengan JWT token
+3. JwtAuthGuard validates token
+4. ProfileService checks if profile already exists
+5. Create new profile record di database
+6. Return created profile dengan ID
+```
+
+### Change Password Flow
+```
+1. User sends POST /account/change-password dengan old & new password
+2. Controller verifies JWT token
+3. AccountService loads user dari database
+4. Verify old password dengan bcrypt
+5. Hash new password
+6. Update user password di database
+7. Return success message
+```
+
+---
+
+## 📊 Database Relationship
+
+```
+User Entity (user table)
+    ↓
+    └── Has One ──→ UserProfile Entity
+    └── Has One ──→ UserTwoFactor Entity
+```
+
+---
+
+## 🛡️ Security Considerations
+
+1. **Password Hashing** - Passwords di-hash menggunakan bcryptjs
+2. **JWT Protection** - Semua endpoint memerlukan valid JWT token
+3. **Validation** - Input data di-validate menggunakan class-validator
+4. **Unique Constraints** - Setiap user hanya bisa punya satu profile
+5. **Error Messages** - Error messages tidak mengungkap detail database
+
+---
+
+## 🧪 Testing
+
+Gunakan file **ACCOUNT_PROFILE_TESTING_GUIDE.md** untuk:
+- Contoh request/response
+- Step-by-step testing procedures
+- Error scenarios
+- Postman collection examples
+
+---
+
+## 🔧 Modules Registered
+
+Update ke **app.module.ts**:
+```typescript
+imports: [
+  // ... existing modules
+  ProfileModule,
+  AccountModule,
+]
+```
+
+---
+
+## 📝 Migration Info
+
+Migration file: `CreateUserProfileTable1684000000001`
+Status: ✅ Executed successfully
+Created table: `user_profile`
+
+---
+
+## 🎯 Next Steps
+
+1. **Test di Postman** - Gunakan ACCOUNT_PROFILE_TESTING_GUIDE.md
+2. **Integrate ke Frontend** - Implement UI untuk profile management
+3. **Add Validation Rules** - Tambahkan business logic sesuai kebutuhan
+4. **Add Logging** - Track account & profile changes
+5. **Add Audit Trail** - Catat siapa yang mengubah apa dan kapan
+
+---
+
+## 📞 Support
+
+Untuk pertanyaan atau modifikasi:
+- Lihat kode di `src/profile/` dan `src/account/`
+- Modifikasi DTOs untuk requirements tambahan
+- Extend services untuk business logic lebih kompleks
+
+---
+
+Generated: May 11, 2026
+Application: onx-tenant v2.0.0
+Status: ✅ Ready for Testing
