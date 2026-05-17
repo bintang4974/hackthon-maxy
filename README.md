@@ -1,86 +1,49 @@
-# User Management API Documentation
+# User Management - Testing Guide
 
 ## Overview
-The User Management Module provides comprehensive endpoints for managing users within the tenant system. This includes listing users, resetting passwords, editing user details, resetting 2FA, and deactivating users.
 
-## Base URL
+This guide provides detailed testing procedures for the User Management endpoints, with special focus on the **Deactivate/Activate** and **Reset 2FA** features.
+
+## Important Distinction: Deactivate vs Reset 2FA
+
+### ❌ Deactivate User
+- **What it does**: Sets `is_active = false` in the user table
+- **Effect**: User **cannot log in**
+- **Data**: User data is **preserved**, not deleted
+- **Reversible**: Yes - use **Activate** endpoint to enable again
+- **Use case**: Temporarily disable account (suspension, leave, etc.)
+
 ```
-http://localhost:7001
-```
-
-## Authentication
-All endpoints require JWT Bearer token authentication. Include the token in the Authorization header:
-```
-Authorization: Bearer {access_token}
-```
-
-## Endpoints
-
-### 1. List Users
-**Endpoint:** `GET /user-management/list-users`
-
-**Description:** Get a paginated list of all users with their profile information.
-
-**Query Parameters:**
-- `skip` (optional): Number of records to skip (default: 0)
-- `take` (optional): Number of records to take (default: 50)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "nama": "Admin User",
-      "username": "admin",
-      "role": "SUPERADMIN",
-      "nomor_hp": "081234567890",
-      "email": "admin@example.com",
-      "fullname": "Administrator",
-      "nickname": null,
-      "is_active": true,
-      "expired_at": null,
-      "fail_login": 0,
-      "created_at": "2026-05-13T10:00:00.000Z",
-      "updated_at": "2026-05-13T10:00:00.000Z"
-    }
-  ],
-  "total": 1,
-  "page": 1,
-  "limit": 50
-}
+User Account Status:
+is_active = false ❌ Cannot login
+is_active = true  ✅ Can login
 ```
 
-**Example Request (cURL):**
+### ❌ Reset 2FA
+- **What it does**: Clears TOTP secret and backup codes
+- **Effect**: User 2FA authentication is disabled
+- **User can still log in**: Yes (if account is active)
+- **Use case**: Account recovery, 2FA device reset, troubleshooting
+- **Different from**: Deactivating the user account
+
+```
+2FA Status:
+is_enabled = true  ✅ 2FA required on login
+is_enabled = false ✅ 2FA not required, login normally
+```
+
+## Test Scenarios
+
+### Scenario 1: Basic User List
+**What to test**: Verify list-users endpoint returns is_active status
+
+**Request:**
 ```bash
 curl -X GET "http://localhost:7001/user-management/list-users?skip=0&take=50" \
   -H "Authorization: Bearer {access_token}"
 ```
 
-**Example Request (Postman):**
-```
-Method: GET
-URL: http://localhost:7001/user-management/list-users
-Headers:
-  - Authorization: Bearer {access_token}
-Query Params:
-  - skip: 0
-  - take: 50
-```
-
----
-
-### 2. Search Users
-**Endpoint:** `GET /user-management/search`
-
-**Description:** Search users by name, username, or phone number.
-
-**Query Parameters:**
-- `term` (required): Search term (searches name, username, and phone)
-- `skip` (optional): Number of records to skip (default: 0)
-- `take` (optional): Number of records to take (default: 50)
-
-**Response:**
+**Expected Response:**
 ```json
 {
   "data": [
@@ -90,14 +53,9 @@ Query Params:
       "username": "admin",
       "role": "SUPERADMIN",
       "nomor_hp": "081234567890",
-      "email": "admin@example.com",
-      "fullname": "Administrator",
-      "nickname": null,
       "is_active": true,
-      "expired_at": null,
-      "fail_login": 0,
       "created_at": "2026-05-13T10:00:00.000Z",
-      "updated_at": "2026-05-13T10:00:00.000Z"
+      ...
     }
   ],
   "total": 1,
@@ -106,201 +64,122 @@ Query Params:
 }
 ```
 
-**Example Request (cURL):**
-```bash
-curl -X GET "http://localhost:7001/user-management/search?term=admin&skip=0&take=50" \
-  -H "Authorization: Bearer {access_token}"
-```
+**Verify:**
+- ✅ `is_active` field is present
+- ✅ Default value is `true` for active users
+- ✅ All users visible in list
 
 ---
 
-### 3. Reset Password
-**Endpoint:** `POST /user-management/reset-password`
+### Scenario 2: Deactivate User (Set to Inactive)
+**What to test**: Deactivate a user account
 
-**Description:** Reset user password to default password: `I7lBLi'7x7s`
+**Test Steps:**
 
-**Request Body:**
-```json
-{
-  "userId": 1
-}
-```
+1. **Get User ID** - Note the user ID you want to deactivate (e.g., user ID = 2)
 
-**Response:**
-```json
-{
-  "message": "Password reset successfully",
-  "userId": 1,
-  "newPassword": "I7lBLi'7x7s"
-}
-```
-
-**Example Request (cURL):**
-```bash
-curl -X POST "http://localhost:7001/user-management/reset-password" \
-  -H "Authorization: Bearer {access_token}" \
-  -H "Content-Type: application/json" \
-  -d '{"userId": 1}'
-```
-
-**Example Request (PowerShell):**
-```powershell
-$body = @{"userId" = 1} | ConvertTo-Json
-Invoke-WebRequest -Uri "http://localhost:7001/user-management/reset-password" `
-  -Method POST `
-  -Headers @{"Authorization" = "Bearer {access_token}"; "Content-Type" = "application/json"} `
-  -Body $body `
-  -UseBasicParsing
-```
-
----
-
-### 4. Edit User
-**Endpoint:** `PUT /user-management/:userId`
-
-**Description:** Edit user information including name, email, phone, role, etc.
-
-**Path Parameters:**
-- `userId` (required): User ID to update
-
-**Request Body:**
-```json
-{
-  "name": "Updated Name",
-  "email": "newemail@example.com",
-  "fullname": "Updated Fullname",
-  "nickname": "NewNickname",
-  "nomor_hp": "085987654321",
-  "role": "ADMIN"
-}
-```
-
-**Note:** All fields in the request body are optional. Only include fields you want to update.
-
-**Response:**
-```json
-{
-  "id": 1,
-  "nama": "Updated Name",
-  "username": "admin",
-  "role": "ADMIN",
-  "nomor_hp": "085987654321",
-  "email": "newemail@example.com",
-  "fullname": "Updated Fullname",
-  "nickname": "NewNickname",
-  "is_active": true,
-  "expired_at": null,
-  "fail_login": 0,
-  "created_at": "2026-05-13T10:00:00.000Z",
-  "updated_at": "2026-05-13T11:30:00.000Z"
-}
-```
-
-**Example Request (cURL):**
-```bash
-curl -X PUT "http://localhost:7001/user-management/1" \
-  -H "Authorization: Bearer {access_token}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Updated Name",
-    "email": "newemail@example.com",
-    "nomor_hp": "085987654321",
-    "role": "ADMIN"
-  }'
-```
-
----
-
-### 5. Deactivate User
-**Endpoint:** `POST /user-management/deactivate`
-
-**Description:** Deactivate a user account. This sets the `is_active` field to `false` in the database, preventing the user from logging in while keeping their data intact.
-
-**Request Body:**
-```json
-{
-  "userId": 1
-}
-```
-
-**Response:**
-```json
-{
-  "message": "User deactivated successfully",
-  "userId": 1,
-  "is_active": false
-}
-```
-
-**Status Code:** 201 (Created) or 200 (OK)
-
-**What Happens:**
-- User's `is_active` field in database is set to `false`
-- User will not be able to log in
-- User data is preserved (not deleted)
-- User can be reactivated later
-
-**Example Request (cURL):**
+2. **Deactivate Request:**
 ```bash
 curl -X POST "http://localhost:7001/user-management/deactivate" \
   -H "Authorization: Bearer {access_token}" \
   -H "Content-Type: application/json" \
-  -d '{"userId": 1}'
+  -d '{"userId": 2}'
 ```
 
----
-
-### 6. Activate User
-**Endpoint:** `POST /user-management/activate`
-
-**Description:** Activate a previously deactivated user account. This sets the `is_active` field back to `true`, allowing the user to log in again.
-
-**Request Body:**
+3. **Expected Response:**
 ```json
 {
-  "userId": 1
+  "message": "User deactivated successfully",
+  "userId": 2,
+  "is_active": false
 }
 ```
 
-**Response:**
+4. **Verify in Database:**
+```sql
+SELECT id, username, is_active FROM user WHERE id = 2;
+-- Should show: is_active = 0 (false)
+```
+
+5. **Try to Login** - Attempt to login with deactivated user's credentials
+   - ❌ Login should **fail** or return unauthorized
+   - User is blocked from login
+
+**Success Criteria:**
+- ✅ Endpoint returns `is_active: false`
+- ✅ Database shows `is_active = 0`
+- ✅ User cannot log in
+- ✅ User data is NOT deleted
+
+---
+
+### Scenario 3: Activate User (Re-enable Account)
+**What to test**: Reactivate a deactivated user
+
+**Test Steps:**
+
+1. **Use the user ID that was deactivated** (e.g., user ID = 2)
+
+2. **Activate Request:**
+```bash
+curl -X POST "http://localhost:7001/user-management/activate" \
+  -H "Authorization: Bearer {access_token}" \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 2}'
+```
+
+3. **Expected Response:**
 ```json
 {
   "message": "User activated successfully",
-  "userId": 1,
+  "userId": 2,
   "is_active": true
 }
 ```
 
-**Status Code:** 201 (Created) or 200 (OK)
+4. **Verify in Database:**
+```sql
+SELECT id, username, is_active FROM user WHERE id = 2;
+-- Should show: is_active = 1 (true)
+```
 
-**What Happens:**
-- User's `is_active` field in database is set to `true`
-- User can log in again
-- User's password and 2FA settings remain unchanged
+5. **Try to Login Again** - Attempt to login with the reactivated user's credentials
+   - ✅ Login should **succeed**
+   - User has access again
 
-**Example Request (cURL):**
+**Success Criteria:**
+- ✅ Endpoint returns `is_active: true`
+- ✅ Database shows `is_active = 1`
+- ✅ User can log in again
+- ✅ User's password/data unchanged
+
+---
+
+### Scenario 4: Reset 2FA (Different from Deactivate)
+**What to test**: Verify that reset 2FA is different from deactivate
+
+**Prerequisites:**
+- User should have 2FA enabled (is_enabled = true in user_two_factor table)
+
+**Test Steps:**
+
+1. **Get User ID with 2FA** (e.g., user ID = 1 who has 2FA setup)
+
+2. **Check 2FA Status Before Reset:**
+```sql
+SELECT user_id, is_enabled, secret FROM user_two_factor WHERE user_id = '1';
+-- Should show: is_enabled = 1, secret = (some value)
+```
+
+3. **Reset 2FA Request:**
 ```bash
-curl -X POST "http://localhost:7001/user-management/activate" \
+curl -X POST "http://localhost:7001/user-management/reset-2fa" \
   -H "Authorization: Bearer {access_token}" \
   -H "Content-Type: application/json" \
   -d '{"userId": 1}'
 ```
 
----
-
-### 7. Reset 2FA
-**Endpoint:** `POST /user-management/reset-2fa`
-
-**Description:** Reset/disable 2FA for a user. This clears the TOTP secret and backup codes, allowing the user to set up 2FA again.
-
-**Request Body:**
-```json
-{
-  "userId": 1
-}
-```
-
-**Response:**
+4. **Expected Response:**
 ```json
 {
   "message": "2FA reset successfully",
@@ -309,194 +188,220 @@ curl -X POST "http://localhost:7001/user-management/activate" \
 }
 ```
 
-**Status Code:** 201 (Created) or 200 (OK)
+5. **Verify in Database:**
+```sql
+SELECT user_id, is_enabled, secret FROM user_two_factor WHERE user_id = '1';
+-- Should show: is_enabled = 0, secret = NULL
+```
 
-**What Happens:**
-- User's TOTP secret is cleared (set to NULL)
-- User's backup codes are cleared (set to empty)
-- User's `is_enabled` flag for 2FA is set to `false`
-- User can set up 2FA again if needed
-- Useful for account recovery or testing purposes
+6. **Important: User Can Still Login**
+   - ✅ User with reset 2FA can still log in
+   - ✅ User account is **NOT deactivated** (is_active still = 1)
+   - ✅ User only needs to re-setup 2FA if desired
 
-**Example Request (cURL):**
+**Success Criteria:**
+- ✅ Endpoint returns `twoFactorReset: true`
+- ✅ Database shows `is_enabled = 0`
+- ✅ TOTP secret is cleared (NULL)
+- ✅ User can still log in (account not deactivated)
+- ✅ User account `is_active` remains `true`
+
+---
+
+### Scenario 5: Difference Between Deactivate and Reset 2FA
+**What to test**: Demonstrate the clear difference between these two operations
+
+| Feature | Deactivate User | Reset 2FA |
+|---------|-----------------|-----------|
+| **Field Changed** | `user.is_active` | `user_two_factor.is_enabled` |
+| **Can Login After?** | ❌ NO | ✅ YES (without 2FA) |
+| **User Data Deleted?** | ❌ NO | ❌ NO |
+| **Reversible?** | ✅ YES (Activate) | ✅ YES (Setup 2FA again) |
+| **Effect** | Account suspended | 2FA disabled |
+| **Use Case** | Lock account | Recover device loss |
+
+**Test:**
+
+1. Deactivate a user with 2FA
+2. Reset 2FA for a different active user
+3. Verify:
+   - Deactivated user cannot login AT ALL
+   - Reset 2FA user can login without 2FA
+
+---
+
+### Scenario 6: Edit User (Verify is_active Status Preserved)
+**What to test**: Verify that editing a user preserves their is_active status
+
+**Test Steps:**
+
+1. **Deactivate a user first**
 ```bash
-curl -X POST "http://localhost:7001/user-management/reset-2fa" \
+curl -X POST "http://localhost:7001/user-management/deactivate" \
   -H "Authorization: Bearer {access_token}" \
   -H "Content-Type: application/json" \
-  -d '{"userId": 1}'
+  -d '{"userId": 3}'
 ```
 
----
+2. **Edit that user's name:**
+```bash
+curl -X PUT "http://localhost:7001/user-management/3" \
+  -H "Authorization: Bearer {access_token}" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Updated Name"}'
+```
 
-## Error Responses
-
-### 400 Bad Request
+3. **Verify Response Contains is_active=false:**
 ```json
 {
-  "message": "userId is required",
-  "error": "Bad Request",
-  "statusCode": 400
+  "id": 3,
+  "nama": "Updated Name",
+  "username": "someuser",
+  "is_active": false,
+  ...
 }
 ```
 
-### 404 Not Found
-```json
-{
-  "message": "User not found",
-  "error": "Not Found",
-  "statusCode": 404
-}
+4. **Verify Database:**
+```sql
+SELECT id, name, is_active FROM user WHERE id = 3;
+-- Should show: name = "Updated Name", is_active = 0
 ```
 
-### 401 Unauthorized
-```json
-{
-  "message": "Unauthorized",
-  "error": "Unauthorized",
-  "statusCode": 401
-}
+**Success Criteria:**
+- ✅ Deactivated status is preserved
+- ✅ User remains inactive after editing
+- ✅ Response shows `is_active: false`
+
+---
+
+## Database Verification
+
+### Check is_active Column Exists
+```sql
+DESCRIBE user;
+-- Look for: is_active tinyint(1) NO MUL 1
+```
+
+### Check Index Created
+```sql
+SHOW INDEX FROM user;
+-- Look for: IDX_user_is_active on is_active column
+```
+
+### Query Active vs Inactive Users
+```sql
+-- Active users
+SELECT id, username, is_active FROM user WHERE is_active = 1;
+
+-- Inactive users
+SELECT id, username, is_active FROM user WHERE is_active = 0;
+
+-- Count
+SELECT COUNT(*) as active_count FROM user WHERE is_active = 1;
+SELECT COUNT(*) as inactive_count FROM user WHERE is_active = 0;
+```
+
+### Check 2FA Status
+```sql
+-- Users with 2FA enabled
+SELECT u.id, u.username, utf.is_enabled 
+FROM user u 
+LEFT JOIN user_two_factor utf ON u.id = utf.user_id 
+WHERE utf.is_enabled = 1;
+
+-- Users with 2FA disabled
+SELECT u.id, u.username, utf.is_enabled 
+FROM user u 
+LEFT JOIN user_two_factor utf ON u.id = utf.user_id 
+WHERE utf.is_enabled = 0 OR utf.is_enabled IS NULL;
 ```
 
 ---
 
-## Available User Roles
+## Postman Collection Testing
 
-The system supports the following roles:
-- `SUPERADMIN`: Full system access
-- `ADMIN`: Administrative access
-- `USER`: Standard user access
-- `GUEST`: Limited access
+### Import and Setup
+1. Open Postman
+2. Import `USER_MANAGEMENT_POSTMAN.json`
+3. Set `base_url` variable: `http://localhost:7001`
+4. Set `access_token` variable with your JWT token
 
----
-
-## User Status Fields
-
-The user list response includes the following status fields:
-
-- **is_active**: User account status (boolean)
-- **fail_login**: Number of failed login attempts (integer)
-- **expired_at**: Account expiration date (timestamp or null)
-
----
-
-## Database Fields
-
-The User Management system uses the following database entities:
-
-### User Table
-- `id`: Primary key (integer)
-- `name`: User name (varchar)
-- `username`: Username for login (varchar, unique)
-- `password`: Hashed password (varchar)
-- `role`: User role enum (1=SUPERADMIN, 2=ADMIN, 3=REQUESTER, 4=GUEST)
-- `is_active`: Account active status (boolean, DEFAULT true)
-  - `true` (1): User can log in
-  - `false` (0): User account is deactivated
-- `create_at`: Creation timestamp (datetime)
-- `update_at`: Update timestamp (datetime)
-
-**Index:** IDX_user_is_active on is_active column for fast queries
-
-### UserProfile Table
-- `user_id`: Foreign key to User (varchar)
-- `name`: Full name (varchar)
-- `email_corporate`: Corporate email (varchar)
-- `nomor_hp`: Phone number (varchar)
-- `nik`: National ID (varchar)
-- `direktorat`: Directorate (varchar)
-- `divisi`: Division (varchar)
-- `departemen`: Department (varchar)
-- `created_at`: Creation timestamp
-- `updated_at`: Update timestamp
-
-### UserTwoFactor Table
-- `user_id`: Foreign key to User (varchar)
-- `secret`: TOTP secret (varchar, nullable)
-- `backup_codes`: Backup codes (text array, nullable)
-- `is_enabled`: 2FA enabled status (boolean)
-- `device_name`: Device name (varchar, nullable)
-- `created_at`: Creation timestamp
-- `updated_at`: Update timestamp
-- `enabled_at`: When 2FA was enabled (timestamp, nullable)
+### Test Sequence
+1. **1. List Users** - Verify is_active field present
+2. **2. Search Users** - Verify is_active in results
+3. **5. Deactivate User** - Set user to inactive
+4. **6. Activate User** - Re-enable user
+5. **3. Reset Password** - Change user password
+6. **4. Edit User** - Modify user info
+7. **7. Reset 2FA** - Clear 2FA settings
 
 ---
 
-## Implementation Notes
+## Common Issues & Troubleshooting
 
-1. **Default Password**: Reset password always uses `I7lBLi'7x7s`
-2. **Search**: Search functionality is case-insensitive
-3. **Pagination**: Default limit is 50, maximum recommended is 100
-4. **Deactivate/Activate**: 
-   - Deactivation sets `is_active` to `false` - prevents login but preserves data
-   - Activation sets `is_active` back to `true` - user can log in again
-   - User data is NOT deleted, only deactivated
-   - Password and 2FA settings remain unchanged
-5. **2FA Reset**: 
-   - Completely resets 2FA configuration (not just deactivation)
-   - Clears TOTP secret and backup codes
-   - User must set up 2FA again if needed
-   - Different from deactivating user account
-6. **Field Updates**: Edit user endpoint updates both User and UserProfile tables
-7. **Phone Number**: Stored in user_profile as `nomor_hp`
-8. **User Status Tracking**: `is_active` field in User table tracks account status
+### Issue: Deactivate endpoint not working
+**Check:**
+- ✅ is_active column exists in user table
+- ✅ Migration was recorded in migrations table
+- ✅ User ID is correct
+- ✅ JWT token is valid
+
+### Issue: Cannot see is_active in response
+**Check:**
+- ✅ User entity has is_active field
+- ✅ User management service is using user.is_active (not hardcoded)
+- ✅ App was restarted after code changes
+
+### Issue: Deactivated user can still login
+**Check:**
+- ✅ Authentication controller is checking is_active field
+- ✅ Login validation includes is_active check
+- ✅ Database shows is_active = 0
+
+### Issue: Reset 2FA not clearing secret
+**Check:**
+- ✅ user_two_factor table exists
+- ✅ User has a record in user_two_factor table
+- ✅ is_enabled is set to false after reset
+- ✅ secret field is NULL after reset
 
 ---
 
-## Integration with Frontend
+## Frontend Integration Notes
 
-For the frontend UI displaying user management table with columns: Nama, Role, Nomor HP, Username, Action
-
-### Example Table Display Code
+### Display User Status
 ```javascript
-// Fetch users
-async function loadUsers() {
-  const token = localStorage.getItem('access_token');
-  const response = await fetch('http://localhost:7001/user-management/list-users?take=50', {
-    headers: {
-      'Authorization': `Bearer ${token}`
-    }
-  });
-  const data = await response.json();
-  return data.data; // Array of users
-}
+// In user list table
+<span className={user.is_active ? 'badge-success' : 'badge-danger'}>
+  {user.is_active ? 'Active' : 'Inactive'}
+</span>
+```
 
-// Reset password action
-async function resetUserPassword(userId) {
-  const token = localStorage.getItem('access_token');
-  const response = await fetch('http://localhost:7001/user-management/reset-password', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ userId })
-  });
-  const data = await response.json();
-  console.log(`New password: ${data.newPassword}`); // Show to admin
-  return data;
+### Action Buttons Logic
+```javascript
+// Show different buttons based on status
+if (user.is_active) {
+  // Show: Edit, Deactivate, Reset Password, Reset 2FA
+} else {
+  // Show: Edit, Activate, Delete (maybe)
 }
+```
 
-// Reset 2FA action
-async function reset2FA(userId) {
-  const token = localStorage.getItem('access_token');
-  const response = await fetch('http://localhost:7001/user-management/reset-2fa', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ userId })
-  });
-  return await response.json();
+### Deactivate Confirmation
+```javascript
+if (confirm(`Deactivate user ${user.nama}? They will not be able to login.`)) {
+  // Call deactivate endpoint
 }
 ```
 
 ---
 
-## Changelog
+## Summary
 
-### Version 1.0.0 (2026-05-13)
-- Initial release
-- Endpoints: List users, search, reset password, edit user, deactivate, reset 2FA
-- Default password support with `I7lBLi'7x7s`
-- Integration with UserProfile and UserTwoFactor entities
+✅ **is_active field** is now available in user table
+✅ **Deactivate endpoint** prevents user from logging in
+✅ **Activate endpoint** re-enables user login
+✅ **Reset 2FA endpoint** is separate from deactivate
+✅ User data is preserved in all operations
+✅ All changes are reversible
