@@ -1,88 +1,73 @@
-# Tenant Users Management - Implementation Summary
+# Tenant Users API Documentation
 
-## 📋 Overview
+## Overview
 
-Successfully implemented a complete **Tenant Users Management Module** for the OMNIX multi-tenant application, enabling detailed user list display on the tenant detail page with full CRUD and management capabilities.
+This document describes the new **Tenant Users Management API** endpoints that allow you to list, manage, and control users within a specific tenant in the OMNIX system.
 
-## ✅ Completed Tasks
+## Base URL
+```
+http://localhost:7001
+```
 
-### 1. API Endpoints Created (4 Main + 1 List)
-- ✅ `GET /tenant/:tenant_code/users` - List users with pagination & filters
-- ✅ `GET /tenant/:tenant_code/users/:userId` - Get user detail
-- ✅ `POST /tenant/:tenant_code/users/reset-password` - Reset password (APPROVER)
-- ✅ `POST /tenant/:tenant_code/users/unlock` - Unlock user (APPROVER)
-- ✅ `POST /tenant/:tenant_code/users/reset-2fa` - Reset 2FA (APPROVER)
+## Authentication
 
-### 2. Database Schema Enhanced
-- ✅ Added `tenant_id` column to user table (links to tenant)
-- ✅ Added `expired_at` column (account expiration date)
-- ✅ Added `fail_login` column (failed login counter)
-- ✅ Created migration: `AddTenantFieldsToUser1715952000000.ts`
-- ✅ Created indexes for `tenant_id`, `expired_at`, `is_active`
+All endpoints require **JWT Bearer Token** authentication (except where noted).
 
-### 3. New Service Layer
-- ✅ Created `TenantUsersService` with 5 methods:
-  - `listUsersByTenant()` - Paginated list with search & filters
-  - `getUserDetail()` - Single user with profile
-  - `resetUserPassword()` - Generate new password
-  - `unlockUser()` - Reset failed login counter
-  - `reset2FAUser()` - Clear 2FA settings
+Include the token in the Authorization header:
+```
+Authorization: Bearer {jwt_token}
+```
 
-### 4. Data Transfer Objects (DTOs)
-- ✅ `TenantUserDto` - Individual user response
-- ✅ `TenantUserListResponseDto` - Paginated list response
-- ✅ `ResetUserPasswordDto` - Request DTO
-- ✅ `UnlockUserDto` - Request DTO with optional reason
-- ✅ `Reset2FADto` - Request DTO
-- ✅ `GetTenantUsersQueryDto` - Pagination & filter query params
+## API Endpoints
 
-### 5. Role-Based Access Control (RBAC)
-- ✅ List endpoint: Requires `JwtAuthGuard`
-- ✅ Management endpoints: Require `JwtAuthGuard + RolesGuard` with `APPROVER` role ('2')
-- ✅ All endpoints validate tenant ownership
+### 1. List Users by Tenant
+**Endpoint:** `GET /tenant/:tenant_code/users`
 
-### 6. Demo Tenant Data
-- ✅ Inserted 6 test users for `demo` tenant (`onx_dev`):
-  - John Anderson (APPROVER, active)
-  - Sarah Mitchell (REQUESTER, active)
-  - Michael Chen (REQUESTER, active)
-  - Andea Wijaya (APPROVER, active, 2 failed logins)
-  - Robert Johnson (ITOPS, inactive, 5 failed logins)
-  - Emily Davis (ITITSI, active)
-- ✅ Created user profiles with emails for all users
+**Description:** Retrieve a paginated list of all users assigned to a specific tenant.
 
-### 7. Error Handling
-- ✅ User not found (404)
-- ✅ User not in tenant (400)
-- ✅ Missing authorization (401)
-- ✅ Insufficient role (403)
-- ✅ Validation errors (400)
+**Authentication:** ✅ Required (JwtAuthGuard)
 
-### 8. Testing & Validation
-- ✅ TypeScript compilation: 0 errors
-- ✅ Docker build successful
-- ✅ Containers running
-- ✅ API endpoints registered
-- ✅ Database schema updated
-- ✅ Test data inserted and verified
+**Request Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `tenant_code` | string | required | Tenant code (e.g., 'demo') |
+| `skip` | number | 0 | Number of records to skip (pagination offset) |
+| `take` | number | 10 | Number of records to retrieve (pagination limit) |
+| `search` | string | optional | Search by username, email, or fullname |
+| `is_active` | boolean | optional | Filter by active status (true/false) |
 
-## 📊 API Response Format
+**Example Request:**
+```bash
+curl -X GET "http://localhost:7001/tenant/demo/users?skip=0&take=10&is_active=true" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
 
-The API response matches the specification in your sheet with these fields:
-
+**Response:** `200 OK`
 ```json
 {
   "data": [
     {
-      "userid": 4,                                    // ID
-      "email": "john.anderson@company.com",           // Email
-      "fullname": "John Anderson",                    // Fullname
-      "nickname": "john.anderson",                    // Nickname (username)
-      "is_active": true,                              // Active status
-      "expired_at": "2027-12-31T23:59:59.000Z",       // Expired at
-      "fail_login": 0,                                // Fail login counter
-      "username": "john.anderson",                    // Username
-      "role": "2"                                     // Role
+      "userid": 4,
+      "email": "john.anderson@company.com",
+      "fullname": "John Anderson",
+      "nickname": "john.anderson",
+      "is_active": true,
+      "expired_at": "2027-12-31T23:59:59.000Z",
+      "fail_login": 0,
+      "username": "john.anderson",
+      "role": "2"
+    },
+    {
+      "userid": 5,
+      "email": "sarah.mitchell@company.com",
+      "fullname": "Sarah Mitchell",
+      "nickname": "sarah.mitchell",
+      "is_active": true,
+      "expired_at": "2027-12-31T23:59:59.000Z",
+      "fail_login": 0,
+      "username": "sarah.mitchell",
+      "role": "1"
     }
   ],
   "total": 6,
@@ -91,173 +76,425 @@ The API response matches the specification in your sheet with these fields:
 }
 ```
 
-## 🔒 Security Features
+---
 
-1. **JWT Authentication** - All endpoints require valid JWT token
-2. **Role-Based Access Control** - Management endpoints restricted to APPROVER role
-3. **Tenant Isolation** - Users can only access data from their tenant
-4. **Secure Passwords** - Using bcryptjs with salt rounds 8
-5. **Input Validation** - Class-validator decorators on all DTOs
+### 2. Get User Detail
+**Endpoint:** `GET /tenant/:tenant_code/users/:userId`
 
-## 📁 Files Created/Modified
+**Description:** Retrieve detailed information about a specific user in the tenant.
 
-### New Files:
-1. `src/tenant/dto/tenant-users.dto.ts` - DTOs (117 lines)
-2. `src/tenant/tenant-users.service.ts` - Service logic (207 lines)
-3. `src/database/migrations/AddTenantFieldsToUser1715952000000.ts` - DB migration
-4. `TENANT_USERS_API.md` - Comprehensive API documentation
-5. `insert_tenant_users.sql` - SQL script (for reference)
+**Authentication:** ✅ Required (JwtAuthGuard)
 
-### Modified Files:
-1. `src/tenant/tenant.controller.ts` - Added 5 new endpoints
-2. `src/tenant/tenant.module.ts` - Added service to providers
-3. `src/database/entities/user.entity.ts` - Added 3 new columns
-4. `src/tenant/dto/tenant.ts` - Updated imports (if needed)
+**Request Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `tenant_code` | string | Tenant code (e.g., 'demo') |
+| `userId` | number | User ID |
 
-## 🚀 Usage Examples
+**Example Request:**
+```bash
+curl -X GET "http://localhost:7001/tenant/demo/users/4" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
 
-### List all users in demo tenant (with JWT token)
+**Response:** `200 OK`
+```json
+{
+  "userid": 4,
+  "email": "john.anderson@company.com",
+  "fullname": "John Anderson",
+  "nickname": "john.anderson",
+  "is_active": true,
+  "expired_at": "2027-12-31T23:59:59.000Z",
+  "fail_login": 0,
+  "username": "john.anderson",
+  "role": "2"
+}
+```
+
+---
+
+### 3. Reset User Password
+**Endpoint:** `POST /tenant/:tenant_code/users/reset-password`
+
+**Description:** Reset a user's password and generate a new default password. This endpoint requires **APPROVER role** (role '2').
+
+**Authentication:** ✅ Required (JwtAuthGuard + RolesGuard - APPROVER only)
+
+**Request Body:**
+```json
+{
+  "userId": 4
+}
+```
+
+**Example Request:**
+```bash
+curl -X POST "http://localhost:7001/tenant/demo/users/reset-password" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": 4
+  }'
+```
+
+**Response:** `200 OK`
+```json
+{
+  "message": "Password user berhasil direset",
+  "defaultPassword": "Kx9mL@2pQw8Z",
+  "email": "john.anderson@company.com"
+}
+```
+
+**Notes:**
+- Returns a randomly generated password
+- Resets `fail_login` counter to 0
+- Email is sent with new password (in production)
+
+---
+
+### 4. Unlock User (Reset Failed Logins)
+**Endpoint:** `POST /tenant/:tenant_code/users/unlock`
+
+**Description:** Unlock a user by resetting the failed login counter. Required when user is locked after multiple failed attempts. This endpoint requires **APPROVER role** (role '2').
+
+**Authentication:** ✅ Required (JwtAuthGuard + RolesGuard - APPROVER only)
+
+**Request Body:**
+```json
+{
+  "userId": 8,
+  "reason": "User forgot password and locked out"
+}
+```
+
+**Example Request:**
+```bash
+curl -X POST "http://localhost:7001/tenant/demo/users/unlock" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": 8,
+    "reason": "Account locked, user requested unlock"
+  }'
+```
+
+**Response:** `200 OK`
+```json
+{
+  "message": "User berhasil di-unlock",
+  "username": "robert.johnson",
+  "fail_login": 0
+}
+```
+
+**Notes:**
+- Resets `fail_login` counter to 0
+- User can login again after unlock
+- Different from deactivate: unlock allows user to login, deactivate prevents login entirely
+
+---
+
+### 5. Reset User 2FA (Two-Factor Authentication)
+**Endpoint:** `POST /tenant/:tenant_code/users/reset-2fa`
+
+**Description:** Reset a user's 2FA settings by removing TOTP secret and backup codes. This endpoint requires **APPROVER role** (role '2').
+
+**Authentication:** ✅ Required (JwtAuthGuard + RolesGuard - APPROVER only)
+
+**Request Body:**
+```json
+{
+  "userId": 4
+}
+```
+
+**Example Request:**
+```bash
+curl -X POST "http://localhost:7001/tenant/demo/users/reset-2fa" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": 4
+  }'
+```
+
+**Response:** `200 OK`
+```json
+{
+  "message": "2FA user berhasil direset",
+  "email": "john.anderson@company.com",
+  "success": true
+}
+```
+
+**Notes:**
+- Clears TOTP secret and backup codes
+- User can still login (different from deactivate)
+- User must re-enable 2FA by scanning new QR code after reset
+- Next login will not require 2FA
+
+---
+
+## Response DTOs
+
+### TenantUserDto
+```typescript
+{
+  userid: number;              // User ID
+  email: string;               // Primary email (corporate or non-corporate)
+  fullname: string;            // Full name from user_profile
+  nickname: string;            // Username
+  is_active: boolean;          // Active status
+  expired_at: Date;            // Account expiration date
+  fail_login: number;          // Failed login attempts counter
+  username: string;            // Username
+  role: string;                // User role (1=REQUESTER, 2=APPROVER, 3=ITOPS, 4=ITITSI)
+}
+```
+
+### TenantUserListResponseDto
+```typescript
+{
+  data: TenantUserDto[];       // Array of users
+  total: number;               // Total count of users matching criteria
+  skip: number;                // Offset used in query
+  take: number;                // Limit used in query
+}
+```
+
+---
+
+## User Roles
+
+| Role ID | Role Name | Description |
+|---------|-----------|-------------|
+| 1 | REQUESTER | Can request services/access |
+| 2 | APPROVER | Can approve requests and manage users |
+| 3 | ITOPS | IT Operations - can manage infrastructure |
+| 4 | ITITSI | IT IT Systems Infrastructure |
+
+---
+
+## Demo Tenant Users
+
+The following users are pre-populated in the demo tenant (`tenant_code: 'demo'`, `tenant_id: 'onx_dev'`):
+
+| ID | Username | Name | Role | Status | Fail Login | Expired At |
+|----|----------|------|------|--------|------------|-----------|
+| 4 | john.anderson | John Anderson | APPROVER (2) | ✅ Active | 0 | 2027-12-31 |
+| 5 | sarah.mitchell | Sarah Mitchell | REQUESTER (1) | ✅ Active | 0 | 2027-12-31 |
+| 6 | michael.chen | Michael Chen | REQUESTER (1) | ✅ Active | 0 | 2027-12-31 |
+| 7 | andea.wijaya | Andea Wijaya | APPROVER (2) | ✅ Active | 2 | 2027-06-30 |
+| 8 | robert.johnson | Robert Johnson | ITOPS (3) | ❌ Inactive | 5 | 2026-03-15 |
+| 9 | emily.davis | Emily Davis | ITITSI (4) | ✅ Active | 0 | 2027-12-31 |
+
+---
+
+## Test Cases
+
+### Test 1: List All Users
 ```bash
 curl -X GET "http://localhost:7001/tenant/demo/users" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json"
 ```
+**Expected:** Returns 6 users with pagination info
 
-### Search active users
+### Test 2: List Active Users Only
 ```bash
 curl -X GET "http://localhost:7001/tenant/demo/users?is_active=true" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json"
 ```
+**Expected:** Returns 5 active users (robert.johnson is inactive)
 
-### Reset password for a user (APPROVER only)
+### Test 3: Search Users by Email
+```bash
+curl -X GET "http://localhost:7001/tenant/demo/users?search=john" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
+**Expected:** Returns john.anderson user
+
+### Test 4: Get Specific User Detail
+```bash
+curl -X GET "http://localhost:7001/tenant/demo/users/4" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
+**Expected:** Returns john.anderson user details
+
+### Test 5: Reset User Password (APPROVER only)
 ```bash
 curl -X POST "http://localhost:7001/tenant/demo/users/reset-password" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"userId": 5}'
 ```
+**Expected:** Returns new generated password for sarah.mitchell
 
-### Unlock user account (APPROVER only)
+### Test 6: Unlock User (APPROVER only)
 ```bash
 curl -X POST "http://localhost:7001/tenant/demo/users/unlock" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"userId": 8}'
 ```
+**Expected:** Resets fail_login counter for robert.johnson to 0
 
-## 📝 Database Queries
-
-### View all users in demo tenant
-```sql
-SELECT id, name, username, role, is_active, tenant_id, expired_at, fail_login 
-FROM user 
-WHERE tenant_id='onx_dev' 
-ORDER BY id;
+### Test 7: Reset 2FA (APPROVER only)
+```bash
+curl -X POST "http://localhost:7001/tenant/demo/users/reset-2fa" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 4}'
 ```
-
-### View user profiles
-```sql
-SELECT up.id, up.user_id, up.name, up.email_corporate, up.email_non_corporate
-FROM user_profile up
-WHERE up.user_id IN (4,5,6,7,8,9);
-```
-
-### Update tenant field for existing users (for migration)
-```sql
-UPDATE user 
-SET tenant_id='onx_dev' 
-WHERE id IN (4,5,6,7,8,9);
-```
-
-## 🔧 Configuration
-
-### Environment Variables
-No new environment variables needed. Uses existing:
-- `DATABASE_HOST` - MySQL host
-- `DATABASE_USER` - MySQL user
-- `DATABASE_PASSWORD` - MySQL password
-
-### Module Imports
-```typescript
-// In TenantModule
-TypeOrmModule.forFeature([
-  User,
-  UserProfileEntity,
-  UserTwoFactorEntity,
-  // ... other entities
-])
-```
-
-## 📈 Frontend Integration
-
-The API response structure is designed to directly populate the tenant detail page user list. Each field corresponds to columns in your UI:
-
-| UI Column | API Field | Type |
-|-----------|-----------|------|
-| Kolom ID | userid | number |
-| Email | email | string |
-| Fullname | fullname | string |
-| Nickname | nickname | string |
-| Is Active | is_active | boolean |
-| Expired At | expired_at | date |
-| Fail Login | fail_login | number |
-
-## 🧪 Test Coverage
-
-The following scenarios have been tested:
-
-1. ✅ List users - default pagination
-2. ✅ List users - custom skip/take
-3. ✅ List users - search by email
-4. ✅ List users - filter by is_active
-5. ✅ Get user detail - valid user
-6. ✅ Get user detail - invalid user (404)
-7. ✅ User data structure - matches spec
-8. ✅ Database relationships - user to profile
-9. ✅ Role-based access - APPROVER required
-
-## ⚙️ Performance Considerations
-
-1. **Pagination** - Default 10 records per page, configurable up to 100
-2. **Indexing** - Indexes on `tenant_id`, `is_active`, `expired_at` for fast queries
-3. **Joins** - LEFT JOIN with user_profile for email/name data
-4. **Caching** - Can be added in future for frequently accessed tenant users
-
-## 🔄 Integration with Existing Features
-
-- Works seamlessly with existing user management endpoints
-- Uses same JWT authentication strategy
-- Follows established RBAC patterns
-- Extends User entity without breaking existing functionality
-- Compatible with existing user-management module
-
-## 📚 Documentation
-
-Comprehensive API documentation provided in:
-- `TENANT_USERS_API.md` - Full API reference with examples
-- `src/tenant/tenant-users.service.ts` - Inline code comments
-- `src/tenant/tenant-users.controller.ts` - Swagger decorators
-
-## 🎯 Next Steps (Optional Enhancements)
-
-1. Add bulk user import from CSV
-2. Add user export to CSV/Excel
-3. Add email notifications for password reset
-4. Add audit logging for user management actions
-5. Add IP whitelist per user
-6. Add session management (logout all sessions)
-7. Add MFA enforcement per tenant
-8. Add password policy per tenant
-
-## 📞 Support
-
-For issues or questions about the Tenant Users API:
-1. Check `TENANT_USERS_API.md` for endpoint documentation
-2. Review test cases in the documentation
-3. Check database schema in migrations folder
-4. Review error responses section for troubleshooting
+**Expected:** Clears 2FA settings for john.anderson
 
 ---
 
-**Implementation Date:** May 20, 2026  
-**Status:** ✅ Complete and Tested  
-**Version:** 1.0
+## Error Responses
+
+### 400 Bad Request
+```json
+{
+  "message": "User dengan ID 999 tidak ditemukan di tenant ini",
+  "error": "Bad Request",
+  "statusCode": 400
+}
+```
+
+### 401 Unauthorized
+```json
+{
+  "message": "Unauthorized",
+  "statusCode": 401
+}
+```
+
+### 403 Forbidden (Insufficient Role)
+```json
+{
+  "message": "Forbidden - APPROVER role required",
+  "error": "Forbidden",
+  "statusCode": 403
+}
+```
+
+---
+
+## Data Fields Explanation
+
+### userid
+The unique identifier for the user in the system. Used as `userId` in API requests.
+
+### email
+The primary email address for the user. Priority: corporate email > non-corporate email.
+
+### fullname
+The user's full name from the user_profile table.
+
+### nickname
+The username - unique identifier for login.
+
+### is_active
+Boolean flag indicating if user account is active. 
+- `true`: User can login
+- `false`: User account is deactivated, cannot login
+
+### expired_at
+The date when the user account will expire. After this date, user cannot login.
+
+### fail_login
+Counter for failed login attempts. Increments on each failed login, resets to 0 after successful login or manual unlock.
+
+### username
+The username used for login (same as nickname).
+
+### role
+User's role/permission level:
+- **1** = REQUESTER - Basic user
+- **2** = APPROVER - Can approve and manage users
+- **3** = ITOPS - IT Operations
+- **4** = ITITSI - IT Systems Infrastructure
+
+---
+
+## Integration with Frontend
+
+The API response format matches the requirements shown in your specification sheet:
+
+| Frontend Field | API Response Field | Type | Example |
+|--|--|--|--|
+| userid (kolom id) | userid | number | 4 |
+| email | email | string | john.anderson@company.com |
+| fullname | fullname | string | John Anderson |
+| nickname | nickname | string | john.anderson |
+| is_active | is_active | boolean | true |
+| expired_at | expired_at | date | 2027-12-31T23:59:59.000Z |
+| fail_login | fail_login | number | 0 |
+
+---
+
+## Database Schema
+
+### user table
+```sql
+CREATE TABLE user (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(255) NOT NULL UNIQUE,
+  username VARCHAR(255) NOT NULL UNIQUE,
+  password VARCHAR(255) NOT NULL,
+  role ENUM('1','2','3','4') DEFAULT '1',
+  is_active BOOLEAN DEFAULT true,
+  tenant_id VARCHAR(255) NULL,      -- NEW
+  expired_at DATETIME NULL,         -- NEW
+  fail_login INT DEFAULT 0,         -- NEW
+  create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  update_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX IDX_user_is_active (is_active),
+  INDEX IDX_user_tenant_id (tenant_id),
+  INDEX IDX_user_expired_at (expired_at)
+);
+```
+
+### user_profile table
+```sql
+CREATE TABLE user_profile (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL UNIQUE,
+  name VARCHAR(255),
+  email_corporate VARCHAR(255),
+  email_non_corporate VARCHAR(255),
+  ...
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+---
+
+## Source Code Files
+
+The following files were created/modified:
+
+1. **src/tenant/dto/tenant-users.dto.ts** - Request/response DTOs
+2. **src/tenant/tenant-users.service.ts** - Business logic
+3. **src/tenant/tenant.controller.ts** - API endpoints (updated)
+4. **src/tenant/tenant.module.ts** - Module configuration (updated)
+5. **src/database/entities/user.entity.ts** - User entity (updated with new fields)
+6. **src/database/migrations/AddTenantFieldsToUser1715952000000.ts** - Database migration
+
+---
+
+## Version Info
+
+- **API Version:** 1.0
+- **Last Updated:** May 20, 2026
+- **NestJS Version:** 10.3.8
+- **TypeORM Version:** 0.3+
+- **Database:** MySQL 8.0
+
