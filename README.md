@@ -1,407 +1,500 @@
-# User Management - Testing Guide
+# Tenant Users API Documentation
 
 ## Overview
 
-This guide provides detailed testing procedures for the User Management endpoints, with special focus on the **Deactivate/Activate** and **Reset 2FA** features.
+This document describes the new **Tenant Users Management API** endpoints that allow you to list, manage, and control users within a specific tenant in the OMNIX system.
 
-## Important Distinction: Deactivate vs Reset 2FA
-
-### ❌ Deactivate User
-- **What it does**: Sets `is_active = false` in the user table
-- **Effect**: User **cannot log in**
-- **Data**: User data is **preserved**, not deleted
-- **Reversible**: Yes - use **Activate** endpoint to enable again
-- **Use case**: Temporarily disable account (suspension, leave, etc.)
-
+## Base URL
 ```
-User Account Status:
-is_active = false ❌ Cannot login
-is_active = true  ✅ Can login
+http://localhost:7001
 ```
 
-### ❌ Reset 2FA
-- **What it does**: Clears TOTP secret and backup codes
-- **Effect**: User 2FA authentication is disabled
-- **User can still log in**: Yes (if account is active)
-- **Use case**: Account recovery, 2FA device reset, troubleshooting
-- **Different from**: Deactivating the user account
+## Authentication
 
+All endpoints require **JWT Bearer Token** authentication (except where noted).
+
+Include the token in the Authorization header:
 ```
-2FA Status:
-is_enabled = true  ✅ 2FA required on login
-is_enabled = false ✅ 2FA not required, login normally
+Authorization: Bearer {jwt_token}
 ```
 
-## Test Scenarios
+## API Endpoints
 
-### Scenario 1: Basic User List
-**What to test**: Verify list-users endpoint returns is_active status
+### 1. List Users by Tenant
+**Endpoint:** `GET /tenant/:tenant_code/users`
 
-**Request:**
+**Description:** Retrieve a paginated list of all users assigned to a specific tenant.
+
+**Authentication:** ✅ Required (JwtAuthGuard)
+
+**Request Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `tenant_code` | string | required | Tenant code (e.g., 'demo') |
+| `skip` | number | 0 | Number of records to skip (pagination offset) |
+| `take` | number | 10 | Number of records to retrieve (pagination limit) |
+| `search` | string | optional | Search by username, email, or fullname |
+| `is_active` | boolean | optional | Filter by active status (true/false) |
+
+**Example Request:**
 ```bash
-curl -X GET "http://localhost:7001/user-management/list-users?skip=0&take=50" \
-  -H "Authorization: Bearer {access_token}"
+curl -X GET "http://localhost:7001/tenant/demo/users?skip=0&take=10&is_active=true" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json"
 ```
 
-**Expected Response:**
+**Response:** `200 OK`
 ```json
 {
   "data": [
     {
-      "id": 1,
-      "nama": "Admin User",
-      "username": "admin",
-      "role": "SUPERADMIN",
-      "nomor_hp": "081234567890",
+      "userid": 4,
+      "email": "john.anderson@company.com",
+      "fullname": "John Anderson",
+      "nickname": "john.anderson",
       "is_active": true,
-      "created_at": "2026-05-13T10:00:00.000Z",
-      ...
+      "expired_at": "2027-12-31T23:59:59.000Z",
+      "fail_login": 0,
+      "username": "john.anderson",
+      "role": "2"
+    },
+    {
+      "userid": 5,
+      "email": "sarah.mitchell@company.com",
+      "fullname": "Sarah Mitchell",
+      "nickname": "sarah.mitchell",
+      "is_active": true,
+      "expired_at": "2027-12-31T23:59:59.000Z",
+      "fail_login": 0,
+      "username": "sarah.mitchell",
+      "role": "1"
     }
   ],
-  "total": 1,
-  "page": 1,
-  "limit": 50
+  "total": 6,
+  "skip": 0,
+  "take": 10
 }
 ```
 
-**Verify:**
-- ✅ `is_active` field is present
-- ✅ Default value is `true` for active users
-- ✅ All users visible in list
-
 ---
 
-### Scenario 2: Deactivate User (Set to Inactive)
-**What to test**: Deactivate a user account
+### 2. Get User Detail
+**Endpoint:** `GET /tenant/:tenant_code/users/:userId`
 
-**Test Steps:**
+**Description:** Retrieve detailed information about a specific user in the tenant.
 
-1. **Get User ID** - Note the user ID you want to deactivate (e.g., user ID = 2)
+**Authentication:** ✅ Required (JwtAuthGuard)
 
-2. **Deactivate Request:**
+**Request Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `tenant_code` | string | Tenant code (e.g., 'demo') |
+| `userId` | number | User ID |
+
+**Example Request:**
 ```bash
-curl -X POST "http://localhost:7001/user-management/deactivate" \
-  -H "Authorization: Bearer {access_token}" \
-  -H "Content-Type: application/json" \
-  -d '{"userId": 2}'
+curl -X GET "http://localhost:7001/tenant/demo/users/4" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json"
 ```
 
-3. **Expected Response:**
+**Response:** `200 OK`
 ```json
 {
-  "message": "User deactivated successfully",
-  "userId": 2,
-  "is_active": false
+  "userid": 4,
+  "email": "john.anderson@company.com",
+  "fullname": "John Anderson",
+  "nickname": "john.anderson",
+  "is_active": true,
+  "expired_at": "2027-12-31T23:59:59.000Z",
+  "fail_login": 0,
+  "username": "john.anderson",
+  "role": "2"
 }
 ```
 
-4. **Verify in Database:**
-```sql
-SELECT id, username, is_active FROM user WHERE id = 2;
--- Should show: is_active = 0 (false)
-```
-
-5. **Try to Login** - Attempt to login with deactivated user's credentials
-   - ❌ Login should **fail** or return unauthorized
-   - User is blocked from login
-
-**Success Criteria:**
-- ✅ Endpoint returns `is_active: false`
-- ✅ Database shows `is_active = 0`
-- ✅ User cannot log in
-- ✅ User data is NOT deleted
-
 ---
 
-### Scenario 3: Activate User (Re-enable Account)
-**What to test**: Reactivate a deactivated user
+### 3. Reset User Password
+**Endpoint:** `POST /tenant/:tenant_code/users/reset-password`
 
-**Test Steps:**
+**Description:** Reset a user's password and generate a new default password. This endpoint requires **APPROVER role** (role '2').
 
-1. **Use the user ID that was deactivated** (e.g., user ID = 2)
+**Authentication:** ✅ Required (JwtAuthGuard + RolesGuard - APPROVER only)
 
-2. **Activate Request:**
-```bash
-curl -X POST "http://localhost:7001/user-management/activate" \
-  -H "Authorization: Bearer {access_token}" \
-  -H "Content-Type: application/json" \
-  -d '{"userId": 2}'
-```
-
-3. **Expected Response:**
+**Request Body:**
 ```json
 {
-  "message": "User activated successfully",
-  "userId": 2,
-  "is_active": true
+  "userId": 4
 }
 ```
 
-4. **Verify in Database:**
-```sql
-SELECT id, username, is_active FROM user WHERE id = 2;
--- Should show: is_active = 1 (true)
-```
-
-5. **Try to Login Again** - Attempt to login with the reactivated user's credentials
-   - ✅ Login should **succeed**
-   - User has access again
-
-**Success Criteria:**
-- ✅ Endpoint returns `is_active: true`
-- ✅ Database shows `is_active = 1`
-- ✅ User can log in again
-- ✅ User's password/data unchanged
-
----
-
-### Scenario 4: Reset 2FA (Different from Deactivate)
-**What to test**: Verify that reset 2FA is different from deactivate
-
-**Prerequisites:**
-- User should have 2FA enabled (is_enabled = true in user_two_factor table)
-
-**Test Steps:**
-
-1. **Get User ID with 2FA** (e.g., user ID = 1 who has 2FA setup)
-
-2. **Check 2FA Status Before Reset:**
-```sql
-SELECT user_id, is_enabled, secret FROM user_two_factor WHERE user_id = '1';
--- Should show: is_enabled = 1, secret = (some value)
-```
-
-3. **Reset 2FA Request:**
+**Example Request:**
 ```bash
-curl -X POST "http://localhost:7001/user-management/reset-2fa" \
-  -H "Authorization: Bearer {access_token}" \
+curl -X POST "http://localhost:7001/tenant/demo/users/reset-password" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"userId": 1}'
+  -d '{
+    "userId": 4
+  }'
 ```
 
-4. **Expected Response:**
+**Response:** `200 OK`
 ```json
 {
-  "message": "2FA reset successfully",
-  "userId": 1,
-  "twoFactorReset": true
+  "message": "Password user berhasil direset",
+  "defaultPassword": "Kx9mL@2pQw8Z",
+  "email": "john.anderson@company.com"
 }
 ```
 
-5. **Verify in Database:**
-```sql
-SELECT user_id, is_enabled, secret FROM user_two_factor WHERE user_id = '1';
--- Should show: is_enabled = 0, secret = NULL
-```
-
-6. **Important: User Can Still Login**
-   - ✅ User with reset 2FA can still log in
-   - ✅ User account is **NOT deactivated** (is_active still = 1)
-   - ✅ User only needs to re-setup 2FA if desired
-
-**Success Criteria:**
-- ✅ Endpoint returns `twoFactorReset: true`
-- ✅ Database shows `is_enabled = 0`
-- ✅ TOTP secret is cleared (NULL)
-- ✅ User can still log in (account not deactivated)
-- ✅ User account `is_active` remains `true`
+**Notes:**
+- Returns a randomly generated password
+- Resets `fail_login` counter to 0
+- Email is sent with new password (in production)
 
 ---
 
-### Scenario 5: Difference Between Deactivate and Reset 2FA
-**What to test**: Demonstrate the clear difference between these two operations
+### 4. Unlock User (Reset Failed Logins)
+**Endpoint:** `POST /tenant/:tenant_code/users/unlock`
 
-| Feature | Deactivate User | Reset 2FA |
-|---------|-----------------|-----------|
-| **Field Changed** | `user.is_active` | `user_two_factor.is_enabled` |
-| **Can Login After?** | ❌ NO | ✅ YES (without 2FA) |
-| **User Data Deleted?** | ❌ NO | ❌ NO |
-| **Reversible?** | ✅ YES (Activate) | ✅ YES (Setup 2FA again) |
-| **Effect** | Account suspended | 2FA disabled |
-| **Use Case** | Lock account | Recover device loss |
+**Description:** Unlock a user by resetting the failed login counter. Required when user is locked after multiple failed attempts. This endpoint requires **APPROVER role** (role '2').
 
-**Test:**
+**Authentication:** ✅ Required (JwtAuthGuard + RolesGuard - APPROVER only)
 
-1. Deactivate a user with 2FA
-2. Reset 2FA for a different active user
-3. Verify:
-   - Deactivated user cannot login AT ALL
-   - Reset 2FA user can login without 2FA
-
----
-
-### Scenario 6: Edit User (Verify is_active Status Preserved)
-**What to test**: Verify that editing a user preserves their is_active status
-
-**Test Steps:**
-
-1. **Deactivate a user first**
-```bash
-curl -X POST "http://localhost:7001/user-management/deactivate" \
-  -H "Authorization: Bearer {access_token}" \
-  -H "Content-Type: application/json" \
-  -d '{"userId": 3}'
-```
-
-2. **Edit that user's name:**
-```bash
-curl -X PUT "http://localhost:7001/user-management/3" \
-  -H "Authorization: Bearer {access_token}" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Updated Name"}'
-```
-
-3. **Verify Response Contains is_active=false:**
+**Request Body:**
 ```json
 {
-  "id": 3,
-  "nama": "Updated Name",
-  "username": "someuser",
-  "is_active": false,
+  "userId": 8,
+  "reason": "User forgot password and locked out"
+}
+```
+
+**Example Request:**
+```bash
+curl -X POST "http://localhost:7001/tenant/demo/users/unlock" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": 8,
+    "reason": "Account locked, user requested unlock"
+  }'
+```
+
+**Response:** `200 OK`
+```json
+{
+  "message": "User berhasil di-unlock",
+  "username": "robert.johnson",
+  "fail_login": 0
+}
+```
+
+**Notes:**
+- Resets `fail_login` counter to 0
+- User can login again after unlock
+- Different from deactivate: unlock allows user to login, deactivate prevents login entirely
+
+---
+
+### 5. Reset User 2FA (Two-Factor Authentication)
+**Endpoint:** `POST /tenant/:tenant_code/users/reset-2fa`
+
+**Description:** Reset a user's 2FA settings by removing TOTP secret and backup codes. This endpoint requires **APPROVER role** (role '2').
+
+**Authentication:** ✅ Required (JwtAuthGuard + RolesGuard - APPROVER only)
+
+**Request Body:**
+```json
+{
+  "userId": 4
+}
+```
+
+**Example Request:**
+```bash
+curl -X POST "http://localhost:7001/tenant/demo/users/reset-2fa" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": 4
+  }'
+```
+
+**Response:** `200 OK`
+```json
+{
+  "message": "2FA user berhasil direset",
+  "email": "john.anderson@company.com",
+  "success": true
+}
+```
+
+**Notes:**
+- Clears TOTP secret and backup codes
+- User can still login (different from deactivate)
+- User must re-enable 2FA by scanning new QR code after reset
+- Next login will not require 2FA
+
+---
+
+## Response DTOs
+
+### TenantUserDto
+```typescript
+{
+  userid: number;              // User ID
+  email: string;               // Primary email (corporate or non-corporate)
+  fullname: string;            // Full name from user_profile
+  nickname: string;            // Username
+  is_active: boolean;          // Active status
+  expired_at: Date;            // Account expiration date
+  fail_login: number;          // Failed login attempts counter
+  username: string;            // Username
+  role: string;                // User role (1=REQUESTER, 2=APPROVER, 3=ITOPS, 4=ITITSI)
+}
+```
+
+### TenantUserListResponseDto
+```typescript
+{
+  data: TenantUserDto[];       // Array of users
+  total: number;               // Total count of users matching criteria
+  skip: number;                // Offset used in query
+  take: number;                // Limit used in query
+}
+```
+
+---
+
+## User Roles
+
+| Role ID | Role Name | Description |
+|---------|-----------|-------------|
+| 1 | REQUESTER | Can request services/access |
+| 2 | APPROVER | Can approve requests and manage users |
+| 3 | ITOPS | IT Operations - can manage infrastructure |
+| 4 | ITITSI | IT IT Systems Infrastructure |
+
+---
+
+## Demo Tenant Users
+
+The following users are pre-populated in the demo tenant (`tenant_code: 'demo'`, `tenant_id: 'onx_dev'`):
+
+| ID | Username | Name | Role | Status | Fail Login | Expired At |
+|----|----------|------|------|--------|------------|-----------|
+| 4 | john.anderson | John Anderson | APPROVER (2) | ✅ Active | 0 | 2027-12-31 |
+| 5 | sarah.mitchell | Sarah Mitchell | REQUESTER (1) | ✅ Active | 0 | 2027-12-31 |
+| 6 | michael.chen | Michael Chen | REQUESTER (1) | ✅ Active | 0 | 2027-12-31 |
+| 7 | andea.wijaya | Andea Wijaya | APPROVER (2) | ✅ Active | 2 | 2027-06-30 |
+| 8 | robert.johnson | Robert Johnson | ITOPS (3) | ❌ Inactive | 5 | 2026-03-15 |
+| 9 | emily.davis | Emily Davis | ITITSI (4) | ✅ Active | 0 | 2027-12-31 |
+
+---
+
+## Test Cases
+
+### Test 1: List All Users
+```bash
+curl -X GET "http://localhost:7001/tenant/demo/users" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
+**Expected:** Returns 6 users with pagination info
+
+### Test 2: List Active Users Only
+```bash
+curl -X GET "http://localhost:7001/tenant/demo/users?is_active=true" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
+**Expected:** Returns 5 active users (robert.johnson is inactive)
+
+### Test 3: Search Users by Email
+```bash
+curl -X GET "http://localhost:7001/tenant/demo/users?search=john" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
+**Expected:** Returns john.anderson user
+
+### Test 4: Get Specific User Detail
+```bash
+curl -X GET "http://localhost:7001/tenant/demo/users/4" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
+**Expected:** Returns john.anderson user details
+
+### Test 5: Reset User Password (APPROVER only)
+```bash
+curl -X POST "http://localhost:7001/tenant/demo/users/reset-password" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 5}'
+```
+**Expected:** Returns new generated password for sarah.mitchell
+
+### Test 6: Unlock User (APPROVER only)
+```bash
+curl -X POST "http://localhost:7001/tenant/demo/users/unlock" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 8}'
+```
+**Expected:** Resets fail_login counter for robert.johnson to 0
+
+### Test 7: Reset 2FA (APPROVER only)
+```bash
+curl -X POST "http://localhost:7001/tenant/demo/users/reset-2fa" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"userId": 4}'
+```
+**Expected:** Clears 2FA settings for john.anderson
+
+---
+
+## Error Responses
+
+### 400 Bad Request
+```json
+{
+  "message": "User dengan ID 999 tidak ditemukan di tenant ini",
+  "error": "Bad Request",
+  "statusCode": 400
+}
+```
+
+### 401 Unauthorized
+```json
+{
+  "message": "Unauthorized",
+  "statusCode": 401
+}
+```
+
+### 403 Forbidden (Insufficient Role)
+```json
+{
+  "message": "Forbidden - APPROVER role required",
+  "error": "Forbidden",
+  "statusCode": 403
+}
+```
+
+---
+
+## Data Fields Explanation
+
+### userid
+The unique identifier for the user in the system. Used as `userId` in API requests.
+
+### email
+The primary email address for the user. Priority: corporate email > non-corporate email.
+
+### fullname
+The user's full name from the user_profile table.
+
+### nickname
+The username - unique identifier for login.
+
+### is_active
+Boolean flag indicating if user account is active. 
+- `true`: User can login
+- `false`: User account is deactivated, cannot login
+
+### expired_at
+The date when the user account will expire. After this date, user cannot login.
+
+### fail_login
+Counter for failed login attempts. Increments on each failed login, resets to 0 after successful login or manual unlock.
+
+### username
+The username used for login (same as nickname).
+
+### role
+User's role/permission level:
+- **1** = REQUESTER - Basic user
+- **2** = APPROVER - Can approve and manage users
+- **3** = ITOPS - IT Operations
+- **4** = ITITSI - IT Systems Infrastructure
+
+---
+
+## Integration with Frontend
+
+The API response format matches the requirements shown in your specification sheet:
+
+| Frontend Field | API Response Field | Type | Example |
+|--|--|--|--|
+| userid (kolom id) | userid | number | 4 |
+| email | email | string | john.anderson@company.com |
+| fullname | fullname | string | John Anderson |
+| nickname | nickname | string | john.anderson |
+| is_active | is_active | boolean | true |
+| expired_at | expired_at | date | 2027-12-31T23:59:59.000Z |
+| fail_login | fail_login | number | 0 |
+
+---
+
+## Database Schema
+
+### user table
+```sql
+CREATE TABLE user (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(255) NOT NULL UNIQUE,
+  username VARCHAR(255) NOT NULL UNIQUE,
+  password VARCHAR(255) NOT NULL,
+  role ENUM('1','2','3','4') DEFAULT '1',
+  is_active BOOLEAN DEFAULT true,
+  tenant_id VARCHAR(255) NULL,      -- NEW
+  expired_at DATETIME NULL,         -- NEW
+  fail_login INT DEFAULT 0,         -- NEW
+  create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  update_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX IDX_user_is_active (is_active),
+  INDEX IDX_user_tenant_id (tenant_id),
+  INDEX IDX_user_expired_at (expired_at)
+);
+```
+
+### user_profile table
+```sql
+CREATE TABLE user_profile (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL UNIQUE,
+  name VARCHAR(255),
+  email_corporate VARCHAR(255),
+  email_non_corporate VARCHAR(255),
   ...
-}
-```
-
-4. **Verify Database:**
-```sql
-SELECT id, name, is_active FROM user WHERE id = 3;
--- Should show: name = "Updated Name", is_active = 0
-```
-
-**Success Criteria:**
-- ✅ Deactivated status is preserved
-- ✅ User remains inactive after editing
-- ✅ Response shows `is_active: false`
-
----
-
-## Database Verification
-
-### Check is_active Column Exists
-```sql
-DESCRIBE user;
--- Look for: is_active tinyint(1) NO MUL 1
-```
-
-### Check Index Created
-```sql
-SHOW INDEX FROM user;
--- Look for: IDX_user_is_active on is_active column
-```
-
-### Query Active vs Inactive Users
-```sql
--- Active users
-SELECT id, username, is_active FROM user WHERE is_active = 1;
-
--- Inactive users
-SELECT id, username, is_active FROM user WHERE is_active = 0;
-
--- Count
-SELECT COUNT(*) as active_count FROM user WHERE is_active = 1;
-SELECT COUNT(*) as inactive_count FROM user WHERE is_active = 0;
-```
-
-### Check 2FA Status
-```sql
--- Users with 2FA enabled
-SELECT u.id, u.username, utf.is_enabled 
-FROM user u 
-LEFT JOIN user_two_factor utf ON u.id = utf.user_id 
-WHERE utf.is_enabled = 1;
-
--- Users with 2FA disabled
-SELECT u.id, u.username, utf.is_enabled 
-FROM user u 
-LEFT JOIN user_two_factor utf ON u.id = utf.user_id 
-WHERE utf.is_enabled = 0 OR utf.is_enabled IS NULL;
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
 ```
 
 ---
 
-## Postman Collection Testing
+## Source Code Files
 
-### Import and Setup
-1. Open Postman
-2. Import `USER_MANAGEMENT_POSTMAN.json`
-3. Set `base_url` variable: `http://localhost:7001`
-4. Set `access_token` variable with your JWT token
+The following files were created/modified:
 
-### Test Sequence
-1. **1. List Users** - Verify is_active field present
-2. **2. Search Users** - Verify is_active in results
-3. **5. Deactivate User** - Set user to inactive
-4. **6. Activate User** - Re-enable user
-5. **3. Reset Password** - Change user password
-6. **4. Edit User** - Modify user info
-7. **7. Reset 2FA** - Clear 2FA settings
+1. **src/tenant/dto/tenant-users.dto.ts** - Request/response DTOs
+2. **src/tenant/tenant-users.service.ts** - Business logic
+3. **src/tenant/tenant.controller.ts** - API endpoints (updated)
+4. **src/tenant/tenant.module.ts** - Module configuration (updated)
+5. **src/database/entities/user.entity.ts** - User entity (updated with new fields)
+6. **src/database/migrations/AddTenantFieldsToUser1715952000000.ts** - Database migration
 
 ---
 
-## Common Issues & Troubleshooting
+## Version Info
 
-### Issue: Deactivate endpoint not working
-**Check:**
-- ✅ is_active column exists in user table
-- ✅ Migration was recorded in migrations table
-- ✅ User ID is correct
-- ✅ JWT token is valid
+- **API Version:** 1.0
+- **Last Updated:** May 20, 2026
+- **NestJS Version:** 10.3.8
+- **TypeORM Version:** 0.3+
+- **Database:** MySQL 8.0
 
-### Issue: Cannot see is_active in response
-**Check:**
-- ✅ User entity has is_active field
-- ✅ User management service is using user.is_active (not hardcoded)
-- ✅ App was restarted after code changes
-
-### Issue: Deactivated user can still login
-**Check:**
-- ✅ Authentication controller is checking is_active field
-- ✅ Login validation includes is_active check
-- ✅ Database shows is_active = 0
-
-### Issue: Reset 2FA not clearing secret
-**Check:**
-- ✅ user_two_factor table exists
-- ✅ User has a record in user_two_factor table
-- ✅ is_enabled is set to false after reset
-- ✅ secret field is NULL after reset
-
----
-
-## Frontend Integration Notes
-
-### Display User Status
-```javascript
-// In user list table
-<span className={user.is_active ? 'badge-success' : 'badge-danger'}>
-  {user.is_active ? 'Active' : 'Inactive'}
-</span>
-```
-
-### Action Buttons Logic
-```javascript
-// Show different buttons based on status
-if (user.is_active) {
-  // Show: Edit, Deactivate, Reset Password, Reset 2FA
-} else {
-  // Show: Edit, Activate, Delete (maybe)
-}
-```
-
-### Deactivate Confirmation
-```javascript
-if (confirm(`Deactivate user ${user.nama}? They will not be able to login.`)) {
-  // Call deactivate endpoint
-}
-```
-
----
-
-## Summary
-
-✅ **is_active field** is now available in user table
-✅ **Deactivate endpoint** prevents user from logging in
-✅ **Activate endpoint** re-enables user login
-✅ **Reset 2FA endpoint** is separate from deactivate
-✅ User data is preserved in all operations
-✅ All changes are reversible
