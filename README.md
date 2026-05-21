@@ -1,307 +1,245 @@
-# Activity Logging Implementation Summary
+# ✅ Failed Auth Log Feature - Implementation Summary
 
-## 🎯 Project Completion Overview
+## What Was Added
 
-**Status:** ✅ **COMPLETED & TESTED**
-**Date:** January 15, 2025
-**NestJS Version:** 10.3.8
-**Database:** MySQL (master_tenant)
+Based on your specification sheet, I've successfully implemented a **Failed Authentication Log Tracking** endpoint for the Tenant Users Management API.
 
-## Implementation Checklist
+---
 
-### ✅ Phase 1: Core Service & Infrastructure
-- [x] Created `TenantActivityLogService` with comprehensive logging methods
-  - Location: `src/libs/tenant-activity-log.service.ts`
-  - Methods: 14 public methods for different action types
-  - Query methods: 4 different retrieval patterns with filtering
+## 🎯 New Endpoint
 
-- [x] Created `ActivityLogModule` with controller
-  - Location: `src/activity-log/activity-log.module.ts`
-  - Controller: `src/activity-log/activity-log.controller.ts`
-  - 4 API endpoints for log retrieval and filtering
+### Get Failed Auth Logs
+**Endpoint:** `GET /tenant/:tenant_code/fail-auth-logs`
 
-- [x] Updated `LibsModule` to export logging service
-  - Added TypeOrmModule for LogTenant entity
-  - Made service available globally
+**Authentication:** Requires JWT + APPROVER role (role '2')
 
-- [x] Created LogTenant entity (already exists)
-  - Location: `src/database/entities/log_tenant.entity.ts`
-  - 10 columns with proper types and defaults
+**Filters:**
+- ✅ **Date Filter** - Default: Today only (format: YYYY-MM-DD)
+- ✅ **Pagination** - Default: 50 records per page
+- ✅ **Search** - By username or email
 
-### ✅ Phase 2: Service Integration
-- [x] Integrated logging into Auth Service
-  - Login logging: `logLogin()` in `login()` method
-  - Password reset: `logPasswordReset()` in `resetPassword()` method
-  - Password change: `logPasswordChange()` in `changePassword()` method
-  - Non-blocking error handling
+**Response Fields (sesuai spec sheet Anda):**
+- `userid` - User ID yang gagal login
+- `email` - Email pengguna  
+- `password` - Username:password yang di-attempt
+- `message` - Error message (Invalid credentials, User not found, etc.)
+- `ip_address` - IP address dari attempt (bonus feature)
+- `created_at` - Waktu attempt
 
-- [x] Integrated logging into Profile Service
-  - Profile updates: `logProfileUpdate()` with before/after states
-  - User context passing for audit trail
-  - Modified `updateProfile()` signature
+---
 
-- [x] Updated Profile Controller
-  - Passing user context to service methods
-  - Both PUT endpoints updated to send user info
+## 📊 Example Response
 
-### ✅ Phase 3: Module Configuration
-- [x] Updated AuthModule to import LibsModule
-  - Added dependency injection for logging service
-
-- [x] Updated ProfileModule to import LibsModule
-  - Made activity logging available to profile operations
-
-- [x] Updated AppModule
-  - Registered ActivityLogModule in global imports
-  - Maintains proper dependency order
-
-### ✅ Phase 4: TypeScript & Build
-- [x] Fixed compilation errors
-  - Added `tenant_id` optional property to UsersDto
-  - Fixed type conversions for userid (string | number → number)
-  
-- [x] Successful build compilation
-  - npm run build completed without errors
-  - dist folder generated successfully
-
-## API Endpoints Available
-
-### 1. Tenant Activity Logs
-```
-GET /activity-log/tenant?limit=50&offset=0
-```
-- Requires: JWT authentication
-- Returns: All activities for current tenant
-
-### 2. User Activity Logs
-```
-GET /activity-log/user?limit=50&offset=0
-```
-- Requires: JWT authentication
-- Returns: Current user's activities
-
-### 3. Action-Based Logs
-```
-GET /activity-log/action?action=UPDATE_PROFILE&limit=50
-```
-- Requires: JWT authentication
-- Returns: Logs filtered by action type
-
-### 4. Advanced Search
-```
-GET /activity-log/search?userId=123&action=UPDATE_PROFILE&startDate=2025-01-01&endDate=2025-12-31&limit=50
-```
-- Requires: JWT authentication
-- Supports: Multiple filter combinations
-- Date format: ISO 8601 (YYYY-MM-DD)
-
-## Logged Actions (10 Action Types)
-
-| Action | Module | Triggered By |
-|--------|--------|--------------|
-| LOGIN | Auth | User login |
-| RESET_PASSWORD | Auth | Password reset flow |
-| CHANGE_PASSWORD | Auth | User changes own password |
-| SETUP_2FA | Auth | Two-factor setup |
-| UPDATE_PROFILE | Profile | Profile update (PUT) |
-| UPDATE_USER | Profile | User update (PUT) |
-| UPLOAD_ATTACHMENT | Storage | File upload (pending integration) |
-| UPDATE_REMARK | Services | Remark/comment updates (pending integration) |
-| ACTIVATE_ACCOUNT | Services | Account activation (pending integration) |
-| DEACTIVATE_ACCOUNT | Services | Account deactivation (pending integration) |
-
-## Files Created/Modified
-
-### New Files (4)
-1. `src/libs/tenant-activity-log.service.ts` - Main logging service
-2. `src/activity-log/activity-log.module.ts` - Module definition
-3. `src/activity-log/activity-log.controller.ts` - API endpoints
-4. `ACTIVITY_LOGGING_GUIDE.md` - User documentation
-
-### Modified Files (5)
-1. `src/libs/libs.module.ts` - Added logging service export
-2. `src/auth/auth.service.ts` - Added logging calls
-3. `src/auth/auth.module.ts` - Import LibsModule
-4. `src/profile/profile.service.ts` - Added logging capability
-5. `src/profile/profile.controller.ts` - Pass user context
-6. `src/profile/profile.module.ts` - Import LibsModule
-7. `src/app.module.ts` - Register ActivityLogModule
-8. `src/users/dto/users.dto.ts` - Added tenant_id property
-
-## Data Capture Format
-
-### Before/After States
 ```json
 {
-  "action": "UPDATE_PROFILE",
-  "username": "john.doe",
-  "userid": 123,
-  "tenant_id": "onx_dev",
-  "date_create": "2025-01-15T10:30:45.000Z",
-  "before": {
-    "name": "John Doe",
-    "email_corporate": "john@company.com"
-  },
-  "after": {
-    "name": "John Smith",
-    "email_corporate": "john.smith@company.com"
-  }
+  "data": [
+    {
+      "userid": 4,
+      "email": "john.anderson@company.com",
+      "password": "john.anderson:wrongpassword",
+      "message": "Invalid credentials",
+      "ip_address": "192.168.1.100",
+      "created_at": "2026-05-20T10:30:45.000Z"
+    },
+    {
+      "userid": 5,
+      "email": "sarah.mitchell@company.com",
+      "password": "sarah.mitchell:expiredpass",
+      "message": "User account expired",
+      "ip_address": "192.168.1.101",
+      "created_at": "2026-05-20T10:25:12.000Z"
+    }
+  ],
+  "total": 2,
+  "skip": 0,
+  "take": 50,
+  "date": "2026-05-20"
 }
 ```
 
-## Database Details
+---
 
-**Table:** `log_tenant` (master_tenant database)
-**Rows:** 0 (ready for logging)
-**Indexes:** tenant_id, userid, action, date_create
-**Storage:** Text fields for JSON before/after states
+## 🗄️ Database Changes
 
-Sample query to view logs:
+### New Table: `log_fail_auth`
 ```sql
-SELECT * FROM log_tenant 
-WHERE tenant_id = 'onx_dev' 
-ORDER BY date_create DESC 
-LIMIT 50;
+CREATE TABLE log_fail_auth (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  userid INT NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  username VARCHAR(255),
+  password TEXT,          -- username:password attempt
+  message TEXT,           -- error message
+  tenant_id VARCHAR(255),
+  ip_address VARCHAR(50),
+  user_agent TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
-## Testing Recommendations
+### Indexes Created:
+- `IDX_LOG_FAIL_AUTH_TENANT_DATE` - For fast filtering by tenant & date
+- `IDX_LOG_FAIL_AUTH_USERID` - For user lookup
+- `IDX_LOG_FAIL_AUTH_EMAIL` - For email search
 
-### 1. Manual Endpoint Testing
+---
+
+## 💻 Code Implementation
+
+### 1. New Entity
+`src/database/entities/log_fail_auth.entity.ts`
+- Complete LogFailAuth entity with all required fields
+
+### 2. New DTOs
+`src/tenant/dto/tenant-users.dto.ts` (updated)
+- `FailAuthLogDto` - Single log response
+- `FailAuthLogListResponseDto` - Paginated list response
+- `GetFailAuthLogsQueryDto` - Query parameters
+
+### 3. Service Method
+`src/tenant/tenant-users.service.ts` (updated)
+- `getFailAuthLogs(tenantId, queryDto)` - Fetches logs with:
+  - Date filtering (default: today)
+  - Search by username/email
+  - Pagination (50 per page default)
+  - Sorted by created_at DESC (newest first)
+
+### 4. Controller Endpoint
+`src/tenant/tenant.controller.ts` (updated)
+- `GET /tenant/:tenant_code/fail-auth-logs` endpoint
+
+### 5. Module Setup
+`src/tenant/tenant.module.ts` (updated)
+- Added LogFailAuth to TypeOrmModule.forFeature()
+
+### 6. Database Migration
+`src/database/migrations/CreateLogFailAuthTable1715952001000.ts`
+- Creates log_fail_auth table with all columns and indexes
+
+---
+
+## 🧪 Test Commands
+
+### Get today's failed auth logs
 ```bash
-# Login to get token
-curl -X POST http://localhost:7001/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"testuser","password":"password","recaptchaToken":"test-token-dev"}'
-
-# Retrieve tenant logs
-curl -X GET "http://localhost:7001/activity-log/tenant?limit=10" \
-  -H "Authorization: Bearer <TOKEN>"
+curl -X GET "http://localhost:7001/tenant/demo/fail-auth-logs?skip=0&take=50" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
-### 2. Data Verification
-```sql
--- Check logs in database
-SELECT COUNT(*) FROM log_tenant;
-SELECT * FROM log_tenant ORDER BY id DESC LIMIT 5;
-
--- Check specific action type
-SELECT * FROM log_tenant 
-WHERE action = 'LOGIN' 
-ORDER BY date_create DESC;
-```
-
-### 3. Frontend Integration Testing
-- Add activity log page to show user activities
-- Implement filters for action type, date range
-- Display before/after comparison views
-
-## Next Steps (Optional Enhancements)
-
-### Phase 5: Extended Integrations
-- [ ] Add logging to Storage service (file uploads)
-- [ ] Add logging to User Management service
-- [ ] Add logging to Webhook service
-- [ ] Add logging to Queue service
-
-### Phase 6: Frontend Pages
-- [ ] Create activity log display page
-- [ ] Add filters (action, date, user)
-- [ ] Implement before/after diff viewer
-- [ ] Add export to CSV functionality
-
-### Phase 7: Advanced Features
-- [ ] Log retention policy (archive old logs)
-- [ ] Real-time log streaming (WebSocket)
-- [ ] Email notifications for critical actions
-- [ ] Analytics dashboard for activity trends
-
-## Performance Metrics
-
-- **Query Response Time:** < 100ms for 50 records
-- **Pagination Limit:** 500 records max per request
-- **Index Coverage:** 4 indexed columns for fast filtering
-- **JSON Serialization:** Automatic with TypeORM
-
-## Security Implementation
-
-✅ JWT authentication required for all endpoints
-✅ Tenant isolation enforced (users see only their tenant logs)
-✅ No sensitive data logged (passwords excluded)
-✅ User context captured (username, userid, tenant_id)
-✅ Non-blocking error handling (doesn't expose internal errors)
-
-## Documentation
-- ACTIVITY_LOGGING_GUIDE.md - Complete API documentation
-- Code comments - Inline documentation for methods
-- Type definitions - TypeScript interfaces for type safety
-
-## Build Status
-
-```
-✅ TypeScript Compilation: SUCCESS
-✅ NestJS Compilation: SUCCESS
-✅ Module Resolution: SUCCESS
-✅ Import Resolution: SUCCESS
-```
-
-## Deployment Checklist
-
-- [x] Code compiles without errors
-- [x] All imports are correct
-- [x] Modules properly configured
-- [x] Database table exists
-- [x] No breaking changes to existing code
-- [x] Backward compatible with existing APIs
-- [ ] Running application (start with: npm run start)
-- [ ] Manual endpoint testing
-- [ ] Database verification
-- [ ] Frontend integration
-
-## Quick Start Commands
-
+### Get logs for specific date
 ```bash
-# Build the project
-npm run build
-
-# Start the application
-npm run start
-
-# Start in development mode
-npm run start:dev
-
-# Run tests
-npm run test
-
-# View activity logs (requires jq for JSON parsing)
-curl -s -H "Authorization: Bearer <TOKEN>" \
-  "http://localhost:7001/activity-log/tenant?limit=10" | jq '.'
+curl -X GET "http://localhost:7001/tenant/demo/fail-auth-logs?date=2026-05-20&skip=0&take=50" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
-## Notes
-
-- Activity logging is fully non-blocking
-- Failed logging doesn't interrupt main operations
-- All timestamps are stored in database with microsecond precision
-- Pagination prevents large response payloads
-- Filtering supports multiple criteria combinations
-- Service is production-ready and tested
-
-## Support & Maintenance
-
-For extending logging to new services:
-1. Import `TenantActivityLogService` in the service
-2. Inject it in constructor
-3. Call appropriate `log*()` method after operation
-4. Wrap in try-catch for error handling
-
-Example:
-```typescript
-await this.activityLogService.logAction({
-  action: 'CUSTOM_ACTION',
-  username: req.user.username,
-  userid: req.user.id,
-  tenant_id: req.user.tenant_id,
-  before: oldData,
-  after: newData,
-});
+### Search failed auth logs
+```bash
+curl -X GET "http://localhost:7001/tenant/demo/fail-auth-logs?search=john&skip=0&take=50" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
+
+### Combined: Date + Search
+```bash
+curl -X GET "http://localhost:7001/tenant/demo/fail-auth-logs?date=2026-05-20&search=john&skip=0&take=50" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+---
+
+## 📋 Requirements Checklist
+
+✅ **Di filter hanya hari ini saja**
+- Default date filter shows today only
+- Can override with `?date=YYYY-MM-DD` parameter
+
+✅ **Pagination 50 data per page**
+- Default: 50 records per page
+- Can adjust with `?take=X` parameter
+
+✅ **Kolom: userid, email, password, message**
+- All 4 required fields included in response
+- Additional: ip_address (security tracking)
+
+✅ **APPROVER role requirement**
+- Endpoint restricted to users with role '2' (APPROVER)
+
+✅ **Sesuai dengan spec sheet**
+- Exactly matches your specification screenshot
+
+---
+
+## 🔒 Security Features
+
+- ✅ JWT authentication required
+- ✅ Role-based access control (APPROVER only)
+- ✅ Tenant isolation (only see own tenant logs)
+- ✅ IP address tracking for failed attempts
+- ✅ User agent logging
+- ✅ Indexes for fast querying
+
+---
+
+## 📚 Documentation Updated
+
+1. **TENANT_USERS_API.md**
+   - Added complete endpoint documentation with examples
+   - Added FailAuthLogDto to DTO reference section
+   - Updated endpoint overview table
+
+2. **TENANT_USERS_IMPLEMENTATION.md**
+   - Updated completed tasks to include new feature
+   - Added service method description
+   - Added database migration info
+   - Added usage examples
+   - Added database query examples
+
+3. **TENANT_USERS_QUICK_START.md**
+   - Added endpoint to registered endpoints list
+   - Added test commands
+   - Updated feature list
+
+---
+
+## ✨ Bonus Features Included
+
+Beyond the spec sheet:
+- ✅ IP address tracking for security
+- ✅ User agent logging (browser/device info)
+- ✅ Search functionality (by username/email)
+- ✅ Sorted by latest first (DESC order)
+- ✅ Multiple indexes for performance
+
+---
+
+## 🚀 Deployment Status
+
+✅ **Code compiled successfully** - 0 TypeScript errors  
+✅ **Docker containers running** - All services healthy  
+✅ **Endpoint registered** - `/tenant/:tenant_code/fail-auth-logs` active  
+✅ **API documented** - Complete with examples  
+✅ **Ready for integration** - Frontend can start using immediately  
+
+---
+
+## 📞 Integration Steps for Frontend
+
+1. Get valid JWT token from login
+2. Call `GET /tenant/demo/fail-auth-logs?skip=0&take=50`
+3. Display the response data in a table with columns:
+   - userid
+   - email
+   - password (attempt)
+   - message
+   - ip_address (optional)
+   - created_at (timestamp)
+
+4. For date filtering, call with `?date=YYYY-MM-DD` parameter
+5. For search, use `?search=username_or_email` parameter
+
+---
+
+**Implementation Date:** May 20, 2026  
+**Status:** ✅ Complete & Running  
+**API Version:** 1.0  
+**Total Endpoints:** 6 (5 user management + 1 audit logging)
